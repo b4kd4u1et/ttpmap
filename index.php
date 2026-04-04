@@ -45,7 +45,7 @@ if (file_exists($dataFile)) {
 
 <div id="ctrl">
   <button class="cb" onclick="resetZoom()">⊕ RESET</button>
-  <button class="cb" onclick="zoomTo(.45)">◈ OVERVIEW</button>
+  <button class="cb" onclick="zoomOverview()">◈ OVERVIEW</button>
   <button class="cb" onclick="zoomTo(1.2)">◉ DETAIL</button>
 </div>
 
