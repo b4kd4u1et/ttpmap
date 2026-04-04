@@ -21,7 +21,8 @@ fetch('api/data.php')
   })
   .catch(err => {
     const el = document.getElementById('loading');
-    el.innerHTML = `<span style="color:#ff4d6d">FAILED TO LOAD DATA: ${err.message}</span>`;
+    const msg = (err.message || 'unknown error').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    el.innerHTML = `<span style="color:#ff4d6d">FAILED TO LOAD DATA: ${msg}</span>`;
   });
 
 function init(DATA) {
@@ -202,6 +203,7 @@ function showTT(data) {
 }
 
 function closeTT() { document.getElementById('tt').style.display = 'none'; }
+window.closeTT = closeTT;
 svg.on('click', closeTT);
 
 // ════════════════════════════════════════════════════════════════════════════

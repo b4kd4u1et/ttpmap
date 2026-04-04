@@ -13,12 +13,14 @@ $tactics = 0; $techniques = 0; $subs = 0;
 
 if (file_exists($dataFile)) {
     $data = json_decode(file_get_contents($dataFile), true);
-    $tactics    = count($data);
-    $techniques = array_sum(array_map(fn($t) => count($t['techs']), $data));
-    $subs       = array_sum(array_map(
-        fn($t) => array_sum(array_map(fn($te) => count($te['sub']), $t['techs'])),
-        $data
-    ));
+    if (is_array($data)) {
+        $tactics    = count($data);
+        $techniques = array_sum(array_map(fn($t) => count($t['techs']), $data));
+        $subs       = array_sum(array_map(
+            fn($t) => array_sum(array_map(fn($te) => count($te['sub']), $t['techs'])),
+            $data
+        ));
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -27,7 +29,9 @@ if (file_exists($dataFile)) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MITRE ATT·CK v18.1 — Radial Mindmap</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"
+        integrity="sha384-su5kReKyYlIFrI62mbQRKXHzFobMa7BHp1cK6julLPbnYcCW9NIZKJiTODjLPeDh"
+        crossorigin="anonymous"></script>
 <link rel="stylesheet" href="src/styles.css">
 </head>
 <body>
@@ -69,7 +73,7 @@ if (file_exists($dataFile)) {
 <div id="leg"></div>
 
 <div id="loading">
-  <span>LOADING ATT&CK DATA...</span>
+  <span>LOADING ATT&amp;CK DATA...</span>
 </div>
 
 <!-- Renderer fetches data from /api/data.php, then builds the D3 visualization -->
