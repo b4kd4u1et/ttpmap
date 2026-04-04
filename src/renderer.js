@@ -21,7 +21,8 @@ fetch('api/data.php')
   })
   .catch(err => {
     const el = document.getElementById('loading');
-    el.innerHTML = `<span style="color:#ff4d6d">FAILED TO LOAD DATA: ${err.message}</span>`;
+    const msg = (err.message || 'unknown error').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    el.innerHTML = `<span style="color:#ff4d6d">FAILED TO LOAD DATA: ${msg}</span>`;
   });
 
 function init(DATA) {
@@ -50,15 +51,31 @@ const root_d = {
 const svg = d3.select('#svg').attr('width', W).attr('height', H);
 const g   = svg.append('g').attr('transform', `translate(${W/2},${H/2})`);
 
-const zoom = d3.zoom().scaleExtent([.08, 4])
+const zoom = d3.zoom().scaleExtent([.04, 8])
   .on('zoom', e => g.attr('transform', e.transform.translate(W/2, H/2)));
 svg.call(zoom);
 
-const tree = d3.tree().size([2 * Math.PI, Math.min(W, H) * .42])
+// Build hierarchy first so we can count leaves before setting the radius
+const hier = d3.hierarchy(root_d);
+
+// Give every leaf node at least 10 px of arc so labels don't overlap.
+// 635 leaves × 10 px / (2π) ≈ 1011 px — much larger than the viewport,
+// so we start zoomed out to fit the whole tree on screen.
+const leafCount = hier.leaves().length;
+const treeRadius = Math.max(
+  Math.min(W, H) * 0.42,
+  (leafCount * 10) / (2 * Math.PI)
+);
+
+const tree = d3.tree()
+  .size([2 * Math.PI, treeRadius])
   .separation((a, b) => (a.parent === b.parent ? (a.depth > 1 ? 0.65 : 1) : (a.depth > 1 ? 1.2 : 2)) / a.depth);
 
-const hier = d3.hierarchy(root_d);
 tree(hier);
+
+// Fit the full tree in the viewport on load
+const fitScale = (Math.min(W, H) * 0.46) / treeRadius;
+svg.call(zoom.transform, d3.zoomIdentity.scale(fitScale));
 
 const linkGen = d3.linkRadial().angle(d => d.x).radius(d => d.y);
 
@@ -202,6 +219,7 @@ function showTT(data) {
 }
 
 function closeTT() { document.getElementById('tt').style.display = 'none'; }
+window.closeTT = closeTT;
 svg.on('click', closeTT);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -231,8 +249,9 @@ window.doSearch = doSearch;
 // ════════════════════════════════════════════════════════════════════════════
 // CONTROLS
 // ════════════════════════════════════════════════════════════════════════════
-window.resetZoom = () => svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity);
-window.zoomTo    = s  => svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.scale(s));
+window.resetZoom    = ()  => svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity);
+window.zoomTo       = s   => svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.scale(s));
+window.zoomOverview = ()  => svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.scale(fitScale));
 
 // ════════════════════════════════════════════════════════════════════════════
 // LEGEND
