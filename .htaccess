@@ -6,5 +6,6 @@ Options -Indexes
 # Prevent direct access to data directory
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteBase /
     RewriteRule ^data/ - [F,L]
 </IfModule>
