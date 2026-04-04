@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MITRE ATT·CK v18.1 — Radial Mindmap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+
+<div id="grid"></div>
+
+<div id="hud">
+  <div id="htitle">MITRE ATT·CK v18.1</div>
+  <div id="hsub">ENTERPRISE · 14 TACTICS · 216 TECHNIQUES · 475 SUB-TECHNIQUES · CLICK TO INSPECT</div>
+</div>
+
+<div id="ctrl">
+  <button class="cb" onclick="resetZoom()">⊕ RESET</button>
+  <button class="cb" onclick="zoomTo(.45)">◈ OVERVIEW</button>
+  <button class="cb" onclick="zoomTo(1.2)">◉ DETAIL</button>
+</div>
+
+<div id="search-wrap">
+  <input id="search" placeholder="Search technique / TID..." oninput="doSearch(this.value)">
+</div>
+
+<div id="stats">
+  <div>TACTICS  <span id="ct">14</span></div>
+  <div>TECHNIQUES <span id="cte">216</span></div>
+  <div>SUB-TECH <span id="cs">475</span></div>
+</div>
+
+<div id="canvas"><svg id="svg"></svg></div>
+
+<div id="tt">
+  <div id="tth">
+    <button class="ttclose" onclick="closeTT()">✕</button>
+    <div id="ttid"></div>
+    <div id="tttitle"></div>
+  </div>
+  <div id="ttb"></div>
+</div>
+
+<div id="leg"></div>
+
+<!-- Data layer — edit src/data.js to add/modify techniques -->
+<script src="src/data.js"></script>
+
+<!-- Renderer — edit src/renderer.js to change layout/interactions -->
+<script src="src/renderer.js"></script>
+
+</body>
+</html>
