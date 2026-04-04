@@ -4,24 +4,16 @@
  *
  * Serves the application shell. No server-side rendering:
  * all visualization and data loading happens client-side via
- * D3.js + fetch('/api/data.php').
+ * D3.js + fetch('api/data.php').
+ *
+ * Stats are hardcoded to avoid decoding the 153 KB data.json
+ * on every request (shared hosting: 5 FastCGI processes per site).
+ * Update these constants manually when data/data.json changes.
  */
 
-// Compute live stats from data for the HUD
-$dataFile = __DIR__ . '/data/data.json';
-$tactics = 0; $techniques = 0; $subs = 0;
-
-if (file_exists($dataFile)) {
-    $data = json_decode(file_get_contents($dataFile), true);
-    if (is_array($data)) {
-        $tactics    = count($data);
-        $techniques = array_sum(array_map(fn($t) => count($t['techs']), $data));
-        $subs       = array_sum(array_map(
-            fn($t) => array_sum(array_map(fn($te) => count($te['sub']), $t['techs'])),
-            $data
-        ));
-    }
-}
+const TACTICS    = 14;
+const TECHNIQUES = 221;
+const SUBS       = 538;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -40,7 +32,7 @@ if (file_exists($dataFile)) {
 
 <div id="hud">
   <div id="htitle">MITRE ATT·CK v18.1</div>
-  <div id="hsub">ENTERPRISE · <?= $tactics ?> TACTICS · <?= $techniques ?> TECHNIQUES · <?= $subs ?> SUB-TECHNIQUES · CLICK TO INSPECT</div>
+  <div id="hsub">ENTERPRISE · <?= TACTICS ?> TACTICS · <?= TECHNIQUES ?> TECHNIQUES · <?= SUBS ?> SUB-TECHNIQUES · CLICK TO INSPECT</div>
 </div>
 
 <div id="ctrl">
@@ -54,9 +46,9 @@ if (file_exists($dataFile)) {
 </div>
 
 <div id="stats">
-  <div>TACTICS  <span id="ct"><?= $tactics ?></span></div>
-  <div>TECHNIQUES <span id="cte"><?= $techniques ?></span></div>
-  <div>SUB-TECH <span id="cs"><?= $subs ?></span></div>
+  <div>TACTICS  <span id="ct"><?= TACTICS ?></span></div>
+  <div>TECHNIQUES <span id="cte"><?= TECHNIQUES ?></span></div>
+  <div>SUB-TECH <span id="cs"><?= SUBS ?></span></div>
 </div>
 
 <div id="canvas"><svg id="svg"></svg></div>
