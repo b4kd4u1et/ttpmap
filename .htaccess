@@ -7,7 +7,3 @@ Options -Indexes
 <FilesMatch "^data/">
     Require all denied
 </FilesMatch>
-
-# PHP settings
-php_flag display_errors Off
-php_value error_reporting 0
