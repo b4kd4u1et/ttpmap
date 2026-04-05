@@ -2,20 +2,23 @@
 
 Interactive radial tree visualization of the full MITRE ATT&CK Enterprise Matrix.
 
-**14 Tactics · 216 Techniques · 475 Sub-techniques**
+**14 Tactics · 221 Techniques · 538 Sub-techniques**
 
 ---
 
 ## Project Structure
 
 ```
-mitre-mindmap/
-├── index.html          # Shell: HTML layout + script tags only
+ttpmap/
+├── index.php           # HTML shell — outputs live stats from constants
+├── api/
+│   └── data.php        # JSON endpoint → serves data/data.json
+├── data/
+│   └── data.json       # Full ATT&CK v18.1 dataset (14 tactics, 221 techniques)
 ├── src/
-│   ├── data.js         # ← ALL ATT&CK data lives here
-│   ├── renderer.js     # D3 radial tree layout + interactions
+│   ├── renderer.js     # D3 radial tree layout + interactions (client-side)
 │   └── styles.css      # Dark terminal theme + UI components
-└── README.md
+└── .htaccess           # Blocks direct access to data/, disables directory listing
 ```
 
 ---
@@ -23,54 +26,93 @@ mitre-mindmap/
 ## Running
 
 ```bash
-# Any static server works — pick one:
-python3 -m http.server 8080
-npx serve .
-npx http-server . -p 8080
-
-# Then open:
-# http://localhost:8080
+php -S localhost:8080
+# Then open: http://localhost:8080
 ```
 
-> **Note:** Must be served via HTTP — `file://` URLs block `<script src>` loading
-> in modern browsers. Use one of the servers above.
+> **Note:** Must be served via HTTP — `file://` URLs block `fetch()` in modern browsers.
 
 ---
 
-## Claude Code Tasks
+## How It Works
 
-### Add a new technique
+1. Browser loads `index.php` (HTML shell)
+2. `renderer.js` fetches `api/data.php` → receives JSON
+3. D3.js builds the radial tree entirely client-side
+4. No server-side rendering — PHP only serves files
 
-In `src/data.js`, find the tactic block and add to its `techs` array:
+---
 
-```js
+## Editing the Data
+
+All ATT&CK data lives in **`data/data.json`**. Schema:
+
+```
+Tactic {
+  id:    string        // "TA0043"
+  name:  string        // "Reconnaissance"
+  color: string        // "#ff4d6d" (hex)
+  desc:  string        // one-line description
+  techs: Technique[]
+}
+
+Technique {
+  id:   string         // "T1595"
+  name: string         // "Active Scanning"
+  desc: string         // description
+  sub:  SubTechnique[] // may be empty []
+  cmds: Command[]
+}
+
+SubTechnique {
+  id:   string         // ".001"  (prepend parent id for full id: "T1595.001")
+  name: string
+}
+
+Command {
+  c: string            // shell command
+  n: string            // explanation / note
+}
+```
+
+### Add a technique
+
+Find the tactic block in `data/data.json` and add to its `techs` array:
+
+```json
 {
-  id: "T1234",
-  name: "My New Technique",
-  desc: "What the adversary does and why.",
-  sub: [
-    { id: ".001", name: "Sub-technique One" },
-    { id: ".002", name: "Sub-technique Two" }
+  "id": "T1234",
+  "name": "My New Technique",
+  "desc": "What the adversary does and why.",
+  "sub": [
+    { "id": ".001", "name": "Sub-technique One" }
   ],
-  cmds: [
-    { c: "command --flag value",       n: "What this command does" },
-    { c: "another-tool -x target.com", n: "Second command note" }
+  "cmds": [
+    { "c": "command --flag value", "n": "What this command does" }
   ]
 }
 ```
 
-### Add a new tactic
+### Add a tactic
 
-Append to the `DATA` array in `src/data.js`:
+Append to the root array in `data/data.json`:
 
-```js
+```json
 {
-  id: "TA9999",
-  name: "New Tactic",
-  color: "#ab12cd",          // any hex color
-  desc: "One-line description.",
-  techs: [ /* technique objects */ ]
+  "id": "TA9999",
+  "name": "New Tactic",
+  "color": "#ab12cd",
+  "desc": "One-line description.",
+  "techs": []
 }
+```
+
+After editing `data/data.json`, update the three constants in `index.php`:
+
+```php
+const TACTICS    = 14;
+const TECHNIQUES = 221;
+const SUBS       = 538;
 ```
 
 ### Change visual theme
@@ -79,119 +121,30 @@ In `src/styles.css`, edit the `:root` block:
 
 ```css
 :root {
-  --bg:   #03050f;     /* canvas background */
-  --glow: #00c8ff;     /* accent / highlight color */
-  --panel: rgba(4,10,28,.97); /* tooltip panel background */
+  --bg:    #03050f;              /* canvas background     */
+  --glow:  #00c8ff;              /* accent / highlight    */
+  --panel: rgba(4,10,28,.97);    /* tooltip background    */
 }
 ```
 
 ### Adjust radial layout spacing
 
-In `src/renderer.js`, find the `d3.tree()` call:
+The tree radius is computed automatically in `src/renderer.js`:
 
 ```js
-const tree = d3.tree()
-  .size([2 * Math.PI, Math.min(W, H) * 0.42])  // ← change 0.42 for radius
-  .separation((a, b) => (
-    a.parent === b.parent
-      ? (a.depth > 1 ? 0.65 : 1)
-      : (a.depth > 1 ? 1.2  : 2)
-  ) / a.depth);
-```
-
-### Export data as JSON / CSV
-
-Open browser DevTools console on the running page:
-
-```js
-// JSON — full tree
-copy(JSON.stringify(DATA, null, 2))
-
-// CSV flat list — paste into spreadsheet
-const rows = toFlatList();
-const csv = [Object.keys(rows[0]).join(','),
-  ...rows.map(r => Object.values(r).map(v => `"${v ?? ''}"`).join(','))
-].join('\n');
-copy(csv);
-
-// Search all techniques matching a query
-search('powershell').forEach(r => console.log(r.id, r.name));
-
-// Get single technique with all metadata
-console.log(getTechnique('T1059'));
-```
-
-### Programmatic query (Node.js / Claude Code)
-
-```js
-// In a .mjs file or with "type":"module" in package.json:
-// NOTE: strip the browser-specific renderer, keep only data.js logic
-
-const { DATA } = await import('./src/data.js'); // after adding exports
-
-// Count all techniques
-const count = DATA.reduce((n, t) => n + t.techs.length, 0);
-
-// All techniques with commands
-const withCmds = DATA.flatMap(t =>
-  t.techs.filter(te => te.cmds?.length > 0)
+// 10 px of arc per leaf node — increase for more spacing
+const treeRadius = Math.max(
+  Math.min(W, H) * 0.42,
+  (leafCount * 10) / (2 * Math.PI)
 );
-
-// Find by ID
-const creds = DATA.find(t => t.id === 'TA0006');
 ```
 
----
-
-## Data Schema
-
-```
-DATA: Tactic[]
-
-Tactic {
-  id:    string   // "TA0043"
-  name:  string   // "Reconnaissance"
-  color: string   // "#ff4d6d" (hex)
-  desc:  string   // one-line description
-  techs: Technique[]
-}
-
-Technique {
-  id:   string    // "T1595"
-  name: string    // "Active Scanning"
-  desc: string    // multi-sentence description
-  sub:  SubTechnique[]
-  cmds: Command[]
-}
-
-SubTechnique {
-  id:   string    // ".001" (suffix — prepend parent id for full id)
-  name: string    // "Scanning IP Blocks"
-}
-
-Command {
-  c: string       // actual shell command
-  n: string       // human note / explanation
-}
-```
-
----
-
-## Helper Functions (available in browser console)
-
-| Function | Returns |
-|---|---|
-| `getTechnique(tid)` | Technique object with tactic metadata |
-| `getTactic(taId)` | Tactic object |
-| `search(query)` | `Array<Technique\|SubTechnique>` matching name/ID |
-| `toFlatList()` | Flat array for CSV/spreadsheet export |
-| `allTechniqueIds` | `string[]` of all T-IDs |
-| `allSubIds` | `string[]` of all full sub-IDs (e.g. `"T1548.001"`) |
+Change `10` to a larger value for more spacing between outer nodes.
 
 ---
 
 ## Source
 
 - MITRE ATT&CK v18.1: https://attack.mitre.org
-- Verified: April 2025
-- License: ATT&CK content © MITRE (CC BY 4.0)
+- Data verified: April 2025
+- ATT&CK content © MITRE (CC BY 4.0)
